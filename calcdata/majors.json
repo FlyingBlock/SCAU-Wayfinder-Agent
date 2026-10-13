@@ -1,0 +1,1424 @@
+{
+  "_comment": [
+    "专业培养方案数据。",
+    "！重要！ 课程清单来源于学科通行课程体系与 SCAU 生命科学学院公开课表，",
+    "学分/学期为**规划用近似值**，confidence 标为 provisional_adjustable 的条目",
+    "请务必用你自己的培养方案（教务系统『培养方案查询』）替换后再依赖它做决策。",
+    "替换方法：改本文件即可，代码不用动。",
+    "",
+    "confidence 取值：",
+    "  verified             = 已对照官方培养方案原文",
+    "  provisional          = 有公开依据但未逐条核验",
+    "  provisional_adjustable = 规划用近似值，请自行替换"
+  ],
+  "meta": {
+    "updated": "2026",
+    "colleges": [
+      "生命科学学院"
+    ],
+    "note": "目前只适配生物技术、生物科学两个专业。要加专业，往 majors 数组里追加一项即可。",
+    "disclaimer": "课程学分与开课学期用于规划估算，不是学籍依据。请以教务系统里的本人培养方案为准。"
+  },
+  "majors": [
+    {
+      "id": "biotech",
+      "name": "生物技术",
+      "college": "生命科学学院",
+      "degree": "理学学士",
+      "years": 4,
+      "total_credits": 160.0,
+      "_total_credits_note": "= 下方 courses 学分合计。若你按本人培养方案替换了课程列表，请同步改这个数。",
+      "source": "《生物技术专业人才培养方案》（生命科学学院）https://life.scau.edu.cn/_upload/article/files/b8/21/3356232e435d9a8748ee9b034672/962c3284-71b7-4ac5-8a6f-2fa23a95a1e5.pdf",
+      "confidence": "provisional_adjustable",
+      "credit_groups": [
+        {
+          "id": "general_required",
+          "name": "通识必修",
+          "credits": 34.5,
+          "counts_toward_ranking": true,
+          "note": "思政、外语、体育、计算机、军事理论等"
+        },
+        {
+          "id": "general_elective",
+          "name": "通识选修",
+          "credits": 8,
+          "counts_toward_ranking": false,
+          "note": "通识选修。官方原文：『已选的通识教育选修课程均参与学期末学分绩点的计算』（《华南农业大学本科通识教育选修课程管理规定》华南农办〔2023〕1号 第十六条），所以计入平均学分绩点；但多数学院的推免学业成绩排名口径不含它。"
+        },
+        {
+          "id": "basic",
+          "name": "学科基础",
+          "credits": 39.5,
+          "counts_toward_ranking": true,
+          "note": "数学、物理、化学、生物学的共同基础"
+        },
+        {
+          "id": "core",
+          "name": "专业核心",
+          "credits": 44.5,
+          "counts_toward_ranking": true,
+          "note": "生物化学、分子生物学、细胞生物学、遗传学、微生物学等"
+        },
+        {
+          "id": "elective",
+          "name": "专业选修",
+          "credits": 28,
+          "counts_toward_ranking": true
+        },
+        {
+          "id": "practice",
+          "name": "实践环节（实验教学 + 其它实践）",
+          "credits": 25,
+          "counts_toward_ranking": false,
+          "note": "实验、实习、毕业论文（设计）。毕业论文通常是取得学位的必要条件。；官方教学计划把实践拆成「实验教学」与「其它实践」两类，这里合并成一行方便看"
+        }
+      ],
+      "requirements": [
+        {
+          "label": "毕业总学分",
+          "op": ">=",
+          "value": 160.0,
+          "note": "取自官方培养方案（已核验 PDF）"
+        },
+        {
+          "label": "实践环节学分",
+          "op": ">=",
+          "value": 25,
+          "note": "实验、实习、毕业论文合计"
+        },
+        {
+          "label": "通识选修学分",
+          "op": ">=",
+          "value": 8
+        }
+      ],
+      "courses": [
+        {
+          "code": "G1001",
+          "name": "思想道德与法治",
+          "credits": 3,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1002",
+          "name": "中国近现代史纲要",
+          "credits": 3,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1003",
+          "name": "马克思主义基本原理",
+          "credits": 3,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1004",
+          "name": "毛泽东思想和中国特色社会主义理论体系概论",
+          "credits": 3,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1005",
+          "name": "习近平新时代中国特色社会主义思想概论",
+          "credits": 3,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1006",
+          "name": "形势与政策",
+          "credits": 2,
+          "group": "general_required",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1101",
+          "name": "大学英语（一）",
+          "credits": 3,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1102",
+          "name": "大学英语（二）",
+          "credits": 3,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1103",
+          "name": "大学英语（三）",
+          "credits": 3,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1104",
+          "name": "大学英语（四）",
+          "credits": 2,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1201",
+          "name": "体育（一）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1202",
+          "name": "体育（二）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1203",
+          "name": "体育（三）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1204",
+          "name": "体育（四）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1301",
+          "name": "军事理论",
+          "credits": 2,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1302",
+          "name": "军事技能训练",
+          "credits": 1,
+          "group": "general_required",
+          "term": 1,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1401",
+          "name": "大学生计算机基础",
+          "credits": 2,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1402",
+          "name": "Python 程序设计",
+          "credits": 3,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "note": "生物信息方向的基础课，建议考高分",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1501",
+          "name": "大学生心理健康教育",
+          "credits": 2,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1502",
+          "name": "职业发展与就业指导",
+          "credits": 1,
+          "group": "general_required",
+          "term": 6,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1503",
+          "name": "创新创业基础",
+          "credits": 2,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true,
+          "note": "部分学校把这门课折成创新创业学分"
+        },
+        {
+          "code": "B2001",
+          "name": "高等数学（一）",
+          "credits": 5,
+          "group": "basic",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2002",
+          "name": "高等数学（二）",
+          "credits": 4,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2003",
+          "name": "线性代数",
+          "credits": 2.5,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2004",
+          "name": "概率论与数理统计",
+          "credits": 3,
+          "group": "basic",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2005",
+          "name": "大学物理",
+          "credits": 4,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2006",
+          "name": "大学物理实验",
+          "credits": 1,
+          "group": "basic",
+          "term": 2,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2101",
+          "name": "无机及分析化学",
+          "credits": 4,
+          "group": "basic",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2102",
+          "name": "无机及分析化学实验",
+          "credits": 1.5,
+          "group": "basic",
+          "term": 1,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2103",
+          "name": "有机化学",
+          "credits": 4,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2104",
+          "name": "有机化学实验",
+          "credits": 1.5,
+          "group": "basic",
+          "term": 2,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2105",
+          "name": "物理化学",
+          "credits": 3,
+          "group": "basic",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2201",
+          "name": "普通生物学",
+          "credits": 3,
+          "group": "basic",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2202",
+          "name": "生物统计学",
+          "credits": 3,
+          "group": "basic",
+          "term": 4,
+          "kind": "必修",
+          "note": "做科研、读论文的基础，很多学院把它算进专业核心",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3001",
+          "name": "生物化学（一）",
+          "credits": 3,
+          "group": "core",
+          "term": 3,
+          "kind": "必修",
+          "note": "生物类专业的核心课，考研初试常考，学分高影响绩点大",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3002",
+          "name": "生物化学（二）",
+          "credits": 3,
+          "group": "core",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3003",
+          "name": "生物化学实验",
+          "credits": 2,
+          "group": "core",
+          "term": 4,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3004",
+          "name": "分子生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "note": "考研初试常见科目",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3005",
+          "name": "分子生物学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 5,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3006",
+          "name": "细胞生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3007",
+          "name": "细胞生物学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 4,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3008",
+          "name": "遗传学",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3009",
+          "name": "遗传学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 5,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3010",
+          "name": "微生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3011",
+          "name": "微生物学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 4,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3012",
+          "name": "植物学",
+          "credits": 3,
+          "group": "core",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3013",
+          "name": "动物学",
+          "credits": 3,
+          "group": "core",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3014",
+          "name": "植物学与动物学实验",
+          "credits": 2,
+          "group": "core",
+          "term": 3,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3015",
+          "name": "基因工程",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3016",
+          "name": "基因工程实验",
+          "credits": 2,
+          "group": "core",
+          "term": 5,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3017",
+          "name": "蛋白质与酶工程",
+          "credits": 3,
+          "group": "core",
+          "term": 6,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3018",
+          "name": "细胞工程",
+          "credits": 3,
+          "group": "core",
+          "term": 6,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3019",
+          "name": "发酵工程",
+          "credits": 3,
+          "group": "core",
+          "term": 6,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4001",
+          "name": "生物信息学",
+          "credits": 3,
+          "group": "elective",
+          "term": 5,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4002",
+          "name": "基因组学",
+          "credits": 2.5,
+          "group": "elective",
+          "term": 6,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4003",
+          "name": "蛋白质组学",
+          "credits": 2,
+          "group": "elective",
+          "term": 6,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4004",
+          "name": "生物技术制药",
+          "credits": 2.5,
+          "group": "elective",
+          "term": 6,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4005",
+          "name": "免疫学",
+          "credits": 2.5,
+          "group": "elective",
+          "term": 5,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4006",
+          "name": "发育生物学",
+          "credits": 2.5,
+          "group": "elective",
+          "term": 6,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4007",
+          "name": "进化生物学",
+          "credits": 2,
+          "group": "elective",
+          "term": 7,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4008",
+          "name": "生态学",
+          "credits": 2.5,
+          "group": "elective",
+          "term": 5,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4009",
+          "name": "现代生物技术专题",
+          "credits": 2,
+          "group": "elective",
+          "term": 7,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4010",
+          "name": "生物安全与伦理",
+          "credits": 1.5,
+          "group": "elective",
+          "term": 7,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4011",
+          "name": "文献检索与科技论文写作",
+          "credits": 2,
+          "group": "elective",
+          "term": 6,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4012",
+          "name": "专业英语",
+          "credits": 2,
+          "group": "elective",
+          "term": 6,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5001",
+          "name": "生物技术综合实验",
+          "credits": 3,
+          "group": "practice",
+          "term": 6,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5002",
+          "name": "专业实习",
+          "credits": 4,
+          "group": "practice",
+          "term": 7,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5003",
+          "name": "科研训练",
+          "credits": 3,
+          "group": "practice",
+          "term": 7,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5004",
+          "name": "毕业论文（设计）",
+          "credits": 10,
+          "group": "practice",
+          "term": 8,
+          "kind": "实践",
+          "counts_toward_gpa": true,
+          "note": "通常以五级制或通过/不通过记分，不计入平均学分绩点"
+        }
+      ],
+      "credits_official": 160.0,
+      "group_credits_official": {
+        "必修": 83.0,
+        "选修": 36.0,
+        "实践": 41.0
+      },
+      "total_credits_note": "官方培养方案的毕业总学分。本文件的 courses 列表是按公开课程信息整理的规划表，具体到某一门课的学分请以教务系统里本人的培养方案为准。"
+    },
+    {
+      "id": "bioscience",
+      "name": "生物科学",
+      "college": "生命科学学院",
+      "degree": "理学学士",
+      "years": 4,
+      "total_credits": 155.0,
+      "_total_credits_note": "= 下方 courses 学分合计。",
+      "source": "《生物科学专业人才培养方案》（生命科学学院）https://life.scau.edu.cn/_upload/article/files/fb/20/17ebd84641568946f977c44c8d79/13932e3e-cf4b-4e44-bb47-4d9e090c24fb.pdf",
+      "confidence": "provisional_adjustable",
+      "credit_groups": [
+        {
+          "id": "general_required",
+          "name": "通识必修",
+          "credits": 34.5,
+          "counts_toward_ranking": true
+        },
+        {
+          "id": "general_elective",
+          "name": "通识选修",
+          "credits": 8,
+          "counts_toward_ranking": false,
+          "note": "通识选修。官方原文：『已选的通识教育选修课程均参与学期末学分绩点的计算』（《华南农业大学本科通识教育选修课程管理规定》华南农办〔2023〕1号 第十六条），所以计入平均学分绩点；但多数学院的推免学业成绩排名口径不含它。"
+        },
+        {
+          "id": "basic",
+          "name": "学科基础",
+          "credits": 40,
+          "counts_toward_ranking": true
+        },
+        {
+          "id": "core",
+          "name": "专业核心",
+          "credits": 45,
+          "counts_toward_ranking": true,
+          "note": "比生物技术更偏基础生物学：植物学、动物学、生态学、进化生物学"
+        },
+        {
+          "id": "elective",
+          "name": "专业选修",
+          "credits": 26,
+          "counts_toward_ranking": true
+        },
+        {
+          "id": "practice",
+          "name": "实践环节（实验教学 + 其它实践）",
+          "credits": 23,
+          "counts_toward_ranking": false,
+          "note": "官方教学计划把实践拆成「实验教学」与「其它实践」两类，这里合并成一行方便看"
+        }
+      ],
+      "requirements": [
+        {
+          "label": "毕业总学分",
+          "op": ">=",
+          "value": 155.0,
+          "note": "取自官方培养方案（已核验 PDF）"
+        },
+        {
+          "label": "实践环节学分",
+          "op": ">=",
+          "value": 23
+        },
+        {
+          "label": "通识选修学分",
+          "op": ">=",
+          "value": 8
+        }
+      ],
+      "courses": [
+        {
+          "code": "G1001",
+          "name": "思想道德与法治",
+          "credits": 3,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1002",
+          "name": "中国近现代史纲要",
+          "credits": 3,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1003",
+          "name": "马克思主义基本原理",
+          "credits": 3,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1004",
+          "name": "毛泽东思想和中国特色社会主义理论体系概论",
+          "credits": 3,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1005",
+          "name": "习近平新时代中国特色社会主义思想概论",
+          "credits": 3,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1006",
+          "name": "形势与政策",
+          "credits": 2,
+          "group": "general_required",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1101",
+          "name": "大学英语（一）",
+          "credits": 3,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1102",
+          "name": "大学英语（二）",
+          "credits": 3,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1103",
+          "name": "大学英语（三）",
+          "credits": 3,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1104",
+          "name": "大学英语（四）",
+          "credits": 2,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1201",
+          "name": "体育（一）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1202",
+          "name": "体育（二）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1203",
+          "name": "体育（三）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1204",
+          "name": "体育（四）",
+          "credits": 1,
+          "group": "general_required",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1301",
+          "name": "军事理论",
+          "credits": 2,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1302",
+          "name": "军事技能训练",
+          "credits": 1,
+          "group": "general_required",
+          "term": 1,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1401",
+          "name": "大学生计算机基础",
+          "credits": 2,
+          "group": "general_required",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1402",
+          "name": "Python 程序设计",
+          "credits": 3,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1501",
+          "name": "大学生心理健康教育",
+          "credits": 2,
+          "group": "general_required",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1502",
+          "name": "职业发展与就业指导",
+          "credits": 1,
+          "group": "general_required",
+          "term": 6,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "G1503",
+          "name": "创新创业基础",
+          "credits": 2,
+          "group": "general_required",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2001",
+          "name": "高等数学（一）",
+          "credits": 5,
+          "group": "basic",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2002",
+          "name": "高等数学（二）",
+          "credits": 4,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2003",
+          "name": "线性代数",
+          "credits": 2.5,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2004",
+          "name": "概率论与数理统计",
+          "credits": 3,
+          "group": "basic",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2005",
+          "name": "大学物理",
+          "credits": 4,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2006",
+          "name": "大学物理实验",
+          "credits": 1,
+          "group": "basic",
+          "term": 2,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2101",
+          "name": "无机及分析化学",
+          "credits": 4,
+          "group": "basic",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2102",
+          "name": "无机及分析化学实验",
+          "credits": 1.5,
+          "group": "basic",
+          "term": 1,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2103",
+          "name": "有机化学",
+          "credits": 4,
+          "group": "basic",
+          "term": 2,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2104",
+          "name": "有机化学实验",
+          "credits": 1.5,
+          "group": "basic",
+          "term": 2,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2105",
+          "name": "物理化学",
+          "credits": 3,
+          "group": "basic",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2201",
+          "name": "普通生物学",
+          "credits": 3,
+          "group": "basic",
+          "term": 1,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "B2202",
+          "name": "生物统计学",
+          "credits": 3,
+          "group": "basic",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3001",
+          "name": "生物化学（一）",
+          "credits": 3,
+          "group": "core",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3002",
+          "name": "生物化学（二）",
+          "credits": 3,
+          "group": "core",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3003",
+          "name": "生物化学实验",
+          "credits": 2,
+          "group": "core",
+          "term": 4,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3004",
+          "name": "分子生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3005",
+          "name": "分子生物学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 5,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3006",
+          "name": "细胞生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3007",
+          "name": "细胞生物学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 4,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3008",
+          "name": "遗传学",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3009",
+          "name": "遗传学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 5,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3010",
+          "name": "微生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 4,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3011",
+          "name": "微生物学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 4,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3012",
+          "name": "植物学",
+          "credits": 3,
+          "group": "core",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3013",
+          "name": "动物学",
+          "credits": 3,
+          "group": "core",
+          "term": 3,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3014",
+          "name": "植物学与动物学实验",
+          "credits": 2,
+          "group": "core",
+          "term": 3,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3020",
+          "name": "生态学",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3021",
+          "name": "生态学实验",
+          "credits": 1.5,
+          "group": "core",
+          "term": 5,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3022",
+          "name": "进化生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 6,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3023",
+          "name": "发育生物学",
+          "credits": 3,
+          "group": "core",
+          "term": 6,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3024",
+          "name": "植物生理学",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "C3025",
+          "name": "动物生理学",
+          "credits": 3,
+          "group": "core",
+          "term": 5,
+          "kind": "必修",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4001",
+          "name": "生物信息学",
+          "credits": 3,
+          "group": "elective",
+          "term": 5,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4002",
+          "name": "基因组学",
+          "credits": 2.5,
+          "group": "elective",
+          "term": 6,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4005",
+          "name": "免疫学",
+          "credits": 2.5,
+          "group": "elective",
+          "term": 5,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4009",
+          "name": "现代生物技术专题",
+          "credits": 2,
+          "group": "elective",
+          "term": 7,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4010",
+          "name": "生物安全与伦理",
+          "credits": 1.5,
+          "group": "elective",
+          "term": 7,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4011",
+          "name": "文献检索与科技论文写作",
+          "credits": 2,
+          "group": "elective",
+          "term": 6,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4012",
+          "name": "专业英语",
+          "credits": 2,
+          "group": "elective",
+          "term": 6,
+          "kind": "限选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4013",
+          "name": "保护生物学",
+          "credits": 2,
+          "group": "elective",
+          "term": 7,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4014",
+          "name": "生物多样性",
+          "credits": 2,
+          "group": "elective",
+          "term": 6,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "E4015",
+          "name": "资源植物学",
+          "credits": 2,
+          "group": "elective",
+          "term": 7,
+          "kind": "任选",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5001",
+          "name": "生物科学综合实验",
+          "credits": 3,
+          "group": "practice",
+          "term": 6,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5002",
+          "name": "专业实习",
+          "credits": 4,
+          "group": "practice",
+          "term": 7,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5003",
+          "name": "科研训练",
+          "credits": 3,
+          "group": "practice",
+          "term": 7,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        },
+        {
+          "code": "P5004",
+          "name": "毕业论文（设计）",
+          "credits": 10,
+          "group": "practice",
+          "term": 8,
+          "kind": "实践",
+          "counts_toward_gpa": true
+        }
+      ],
+      "credits_official": 155.0,
+      "group_credits_official": {
+        "必修": 82.5,
+        "选修": 39.0,
+        "实践": 33.5
+      },
+      "total_credits_note": "官方培养方案的毕业总学分。本文件的 courses 列表是按公开课程信息整理的规划表，具体到某一门课的学分请以教务系统里本人的培养方案为准。"
+    }
+  ]
+}

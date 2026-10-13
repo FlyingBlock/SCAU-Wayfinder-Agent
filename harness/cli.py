@@ -6,8 +6,17 @@
     python -m harness.cli crawl --scope narrow
     python -m harness.cli search "生化大赛 报名"
     python -m harness.cli ask "生物专业可以参加什么竞赛？走什么发展路线？"
-    python -m harness.cli web              # 启动简陋 Web 界面
+    python -m harness.cli web              # 启动 Web 界面（含计算器页面）
     python -m harness.cli doctor           # 自检
+
+计算器（不花 token、不联网，只读 data/calc/*.json）：
+
+    python -m harness.cli calc                            # 数据自检
+    python -m harness.cli gpa --score C3001=88 --score B2001=76
+    python -m harness.cli gpa --scores my.json -v --all
+    python -m harness.cli goals --scores my.json --cohort 120 --rank 18
+    python -m harness.cli goals --scores my.json --activity biosci-competition:三等奖
+    python -m harness.cli activities --category 学科竞赛
 """
 from __future__ import annotations
 
@@ -143,6 +152,22 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"库内文章    : {s['articles']} 篇（带日期 {s['with_date']}）"
               f"｜栏目 {s['sites']}｜栏目级错误 {s['site_errors']}")
         st.close()
+
+    # 计算器数据自检：它不依赖网络与数据库，坏了要第一时间知道
+    try:
+        from .calc import Calculator
+
+        calc = Calculator()
+        n_courses = sum(len(m.courses) for m in calc.majors)
+        print(f"计算器      : ✓ {len(calc.majors)} 专业 / {n_courses} 门课 / "
+              f"{len(calc.goals)} 条门槛 / {len(calc.activities)} 项活动")
+        if calc.data.warnings:
+            for w in calc.data.warnings:
+                print(f"  ⚠️ {w}")
+    except Exception as e:
+        print(f"计算器      : ✗ 数据装载失败 {type(e).__name__}: {e}")
+        print("              仓库自带的数据在 calcdata/；"
+              "本地覆盖放 data/calc/")
 
     print(f"\nLLM         : {SETTINGS.llm.model} @ {SETTINGS.llm.base_url}")
     print(f"凭据        : {'✓ 已配置' if SETTINGS.llm.configured else '✗ 未配置 → 运行 cli setup-key'}")
@@ -282,6 +307,251 @@ def cmd_web(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# 计算器（绩点 / 德育 / 综测）
+# --------------------------------------------------------------------------- #
+def _calc_profile(args: argparse.Namespace):
+    """把 CLI 参数变成 Profile。成绩可以传 JSON 文件或 `课程代码=分数` 列表。"""
+    from .calc import Profile
+
+    scores: dict[str, object] = {}
+    if getattr(args, "scores", None):
+        scores.update(json.loads(Path(args.scores).read_text(encoding="utf-8")))
+    for item in (getattr(args, "score", None) or []):
+        if "=" in item:
+            code, _, val = item.partition("=")
+            val = val.strip()
+            try:
+                scores[code.strip()] = float(val)
+            except ValueError:
+                scores[code.strip()] = val      # 五级制，如 G1201=优秀
+    metrics: dict[str, float] = {}
+    for item in (getattr(args, "metric", None) or []):
+        if "=" in item:
+            key, _, val = item.partition("=")
+            try:
+                metrics[key.strip()] = float(val)
+            except ValueError:
+                pass
+    return Profile(
+        major_id=getattr(args, "major", "") or "",
+        scores=scores, metrics=metrics,
+        cohort_size=int(getattr(args, "cohort", 0) or 0),
+        rank=int(getattr(args, "rank", 0) or 0),
+    )
+
+
+def _calc_basket(args: argparse.Namespace):
+    from .calc import BasketItem
+
+    items = []
+    for raw in (getattr(args, "activity", None) or []):
+        # 形式：活动ID[:名次][x份数]
+        qty = 1
+        if "x" in raw:
+            raw, _, q = raw.rpartition("x")
+            try:
+                qty = max(1, int(q))
+            except ValueError:
+                qty = 1
+        aid, _, achieve = raw.partition(":")
+        items.append(BasketItem(activity_id=aid.strip(), achieve=achieve.strip(),
+                                quantity=qty))
+    return items
+
+
+def cmd_gpa(args: argparse.Namespace) -> int:
+    from .calc import Calculator
+
+    calc = Calculator()
+    res = calc.evaluate(_calc_profile(args), _calc_basket(args))
+    g = res.gpa
+
+    print("=" * 74)
+    print(f"专业：{res.major.name if res.major else '（未指定，用 --major 指定）'}")
+    print("=" * 74)
+    print(f"  平均学分绩点      : {g.gpa:.4f}")
+    print(f"  保研用学业绩点    : {g.ranking_gpa:.4f}"
+          f"（{g.ranking_credits:g} 学分计入排名）")
+    print(f"  加权平均分        : {g.avg_score:.2f}")
+    # 这里的分母是「培养方案文件里列出的所有课程」的学分合计，可能大于官方
+    # 毕业总学分——因为选修课都列进去了，而一个学生不会全选。所以标签写清楚，
+    # 免得和毕业门槛的 160 学分混淆。
+    print(f"  已获学分 / 列表学分: {g.credits_earned:g} / {g.credits_total:g}"
+          f"（{g.progress * 100:.1f}%）")
+    print(f"  计入绩点学分      : {g.credits_graded:g}，未出成绩 {g.credits_remaining:g}")
+    print(f"  不及格课程        : {len(g.failed)} 门")
+    if g.gpa_from_retakes:
+        print(f"  重修/补考课程      : {g.gpa_from_retakes} 门（已按封顶口径计入）")
+
+    if args.verbose:
+        print("\n课程明细：")
+        print(f"  {'代码':<8}{'课程':<30}{'学分':>6}{'成绩':>8}{'绩点':>8}{'计入':>6}")
+        for c in g.courses:
+            if c.gp is None and not args.all:
+                continue
+            mark = "是" if c.counted else "否"
+            egp = "—" if c.effective_gp is None else f"{c.effective_gp:.2f}"
+            if c.raw is None:
+                raw_txt = "—"
+            elif isinstance(c.raw, float) and abs(c.raw - round(c.raw)) < 1e-9:
+                raw_txt = str(int(round(c.raw)))
+            else:
+                raw_txt = str(c.raw)
+            print(f"  {c.code:<8}{c.name[:28]:<30}{c.credits:>6g}"
+                  f"{raw_txt:>8}{egp:>8}{mark:>6}"
+                  + (f"   {c.note}" if c.note else ""))
+    print("=" * 74)
+    return 0
+
+
+def cmd_goals(args: argparse.Namespace) -> int:
+    from .calc import Calculator
+
+    calc = Calculator()
+    res = calc.evaluate(_calc_profile(args), _calc_basket(args))
+    d = res.as_dict()
+
+    print("=" * 74)
+    print(f"门槛对照｜绩点 {d['gpa']['gpa']:.4f}｜综测 {d['comprehensive']['total']:.2f}"
+          f"｜已获学分 {d['gpa']['credits_earned']:g}/{d['gpa']['credits_total']:g}")
+    print("=" * 74)
+
+    for g in d["goals"]:
+        status = ("✅ 已达标" if g["hard_passed"] is True else
+                  "❌ 未达标" if g["hard_passed"] is False else "❓ 待补数据")
+        if not args.all and g["hard_passed"] is True:
+            continue
+        print(f"\n【{g['name']}】{status}")
+        if g["summary"]:
+            print(f"  {g['summary']}")
+        for c in g["checks"]:
+            mark = ("✅" if c["passed"] is True else
+                    "❌" if c["passed"] is False else "❓")
+            if c["passed"] is True and not args.all:
+                continue
+            actual = "未填" if c["actual"] is None else f"{c['actual']:g}"
+            line = (f"  {mark} {c['label']}：{actual} / 要求 {c['op']} "
+                    f"{c['required']:g}")
+            if c["gap"]:
+                line += f"   ← 还差 {c['gap']:g}"
+            print(line)
+            if c["note"] and args.verbose:
+                print(f"        说明：{c['note']}")
+            if c["source"] and args.verbose:
+                print(f"        出处：{c['source']}")
+        for key, bd in (g["breakdowns"] or {}).items():
+            print(f"\n  ── 要在毕业时达到 {key} 的绩点 ──")
+            print(f"     {bd['message']}")
+            if bd.get("difficulty_note"):
+                print(f"     {bd['difficulty_note']}")
+            if args.verbose and bd["per_course"]:
+                print(f"     剩余 {len(bd['per_course'])} 门课，"
+                      f"每门至少 {bd['required_remaining_score']:g} 分：")
+                for pc in bd["per_course"]:
+                    print(f"       [{pc['term']:>2}] {pc['name'][:26]:<28}"
+                          f"{pc['credits']:>5g} 学分 → {pc['required_score']:g} 分")
+    print("\n" + "=" * 74)
+    return 0
+
+
+def cmd_activities(args: argparse.Namespace) -> int:
+    from .calc import Calculator
+
+    calc = Calculator()
+    preview = calc.basket.preview_all()
+    print("=" * 74)
+    print(f"可加分活动清单：共 {len(calc.activities)} 项"
+          f"（下面列的是各项最高可能得分）")
+    print("=" * 74)
+
+    rows = []
+    for act in calc.activities:
+        if args.category and act.category != args.category:
+            continue
+        if args.level and act.level != args.level:
+            continue
+        best, best_ach = 0.0, ""
+        for ach, info in (preview.get(act.id) or {}).items():
+            if info["total"] > best:
+                best, best_ach = info["total"], ach
+        if args.scored_only and best <= 0:
+            continue
+        rows.append((act, best, best_ach))
+
+    for act, best, best_ach in sorted(rows, key=lambda r: -r[1]):
+        flag = {"verified": "✓", "provisional": "~",
+                "unverified": "?", "adjustable": "*"}.get(act.confidence, " ")
+        print(f"\n[{flag}] {act.name}")
+        print(f"    类别 {act.category}｜级别 {act.level}"
+              f"｜最高 +{best:g} 分（{best_ach}）")
+        if act.organizer:
+            print(f"    主办：{act.organizer}")
+        if act.timing:
+            print(f"    时间：{act.timing}")
+        if act.url:
+            print(f"    入口：{act.url}")
+        if act.source:
+            print(f"    依据：{act.source}")
+        print(f"    加入活动篮： --activity {act.id}:{best_ach or '参与'}")
+    print("\n" + "-" * 74)
+    print("可信度标记：✓ 已核验分值  ~ 有依据未逐条核验  ? 加分值未证实  * 估算值")
+    print("=" * 74)
+    return 0
+
+
+def cmd_calc(args: argparse.Namespace) -> int:
+    """打印计算器的数据自检与口径摘要。"""
+    from .calc import Calculator
+
+    calc = Calculator()
+    g = calc.rules.gpa
+    print("=" * 74)
+    print("计算器数据自检")
+    print("=" * 74)
+    print(f"  专业      : {', '.join(m.name + '(' + m.id + ')' for m in calc.majors)}")
+    print(f"  课程      : " + "；".join(
+        f"{m.name} {len(m.courses)} 门/{m.total_credits:g} 学分" for m in calc.majors))
+    print(f"  门槛      : {len(calc.goals)} 条路线（"
+          + "、".join(g2.name for g2 in calc.goals[:4])
+          + ("…）" if len(calc.goals) > 4 else "）"))
+    print(f"  活动      : {len(calc.activities)} 项")
+    print(f"  绩点折算  : {g.name}，上限 {g.max_gp:g}，"
+          f"{len(g.bands)} 个区间，不及格线 {g.fail_score:g}")
+    print(f"  重修口径  : {g.retake_policy}，封顶 {g.retake_cap:g} 绩点")
+    dims = calc.rules.comprehensive.get("dimensions") or []
+    print("  综测构成  : " + " + ".join(
+        f"{d.get('name')}({d.get('cap'):g}分, 加分上限{d.get('bonus_cap'):g})"
+        for d in dims))
+    print("  加分通道  : " + ", ".join(
+        calc.rules.comprehensive.get("channel_metrics") or {}))
+    routing = calc.rules.comprehensive.get("bonus_routing") or {}
+    print("  进综测的分项通道: " + ", ".join(
+        f"{k}→{v}" for k, v in routing.items() if v not in ("none",)))
+    print("  不进综测的通道  : " + ", ".join(
+        k for k, v in routing.items() if v == "none"))
+    if calc.data.warnings:
+        print("\n  ⚠️ 数据校验警告：")
+        for w in calc.data.warnings:
+            print("     - " + w)
+    else:
+        print("\n  ✅ 计算器数据校验通过，无警告")
+
+    dirs = calc.data.meta.get("dirs") or {}
+    if dirs:
+        from pathlib import Path as _P
+
+        override = [k for k, v in dirs.items()
+                    if "data" in _P(v).parts and "calc" in _P(v).parts]
+        print(f"\n  数据目录  : {'calcdata/（仓库自带，进 git）'}")
+        if override:
+            print(f"  本地覆盖  : data/calc/ 覆盖了 {len(override)}/"
+                  f"{len(dirs)} 个文件（"
+                  + "、".join(sorted(override)) + "）")
+    print("=" * 74)
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="harness", description="SCAU 站点群 LLM 检索 Harness",
@@ -334,6 +604,43 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=SETTINGS.port)
     p.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     p.set_defaults(func=cmd_web)
+
+    # ---------------- 计算器（绩点 / 德育 / 综测） ---------------- #
+    def _add_calc_inputs(sp):
+        sp.add_argument("--major", choices=["biotech", "bioscience"],
+                        default="biotech", help="专业：biotech=生物技术，bioscience=生物科学")
+        sp.add_argument("--scores", help="成绩 JSON 文件：{\"课程代码\": 分数}")
+        sp.add_argument("--score", action="append", metavar="代码=分数",
+                        help="单门成绩，可重复；也支持五级制，如 --score G1201=优秀")
+        sp.add_argument("--metric", action="append", metavar="指标=数值",
+                        help="其他指标，如 --metric cet4_score=452 --metric pe_pass=1")
+        sp.add_argument("--cohort", type=int, default=0, help="专业总人数（算排名百分位用）")
+        sp.add_argument("--rank", type=int, default=0, help="我的名次")
+        sp.add_argument("--activity", action="append", metavar="活动ID[:名次][x份数]",
+                        help="加入活动篮，如 --activity biosci-competition:三等奖 "
+                             "--activity volunteer-service:参与x3")
+
+    p = sub.add_parser("gpa", help="算平均学分绩点（可带活动篮）")
+    _add_calc_inputs(p)
+    p.add_argument("-v", "--verbose", action="store_true", help="打印逐门课程明细")
+    p.add_argument("--all", action="store_true", help="连同未出成绩的课一起打印")
+    p.set_defaults(func=cmd_gpa)
+
+    p = sub.add_parser("goals", help="对照保研/考研/奖学金门槛，并给出课程目标分")
+    _add_calc_inputs(p)
+    p.add_argument("-v", "--verbose", action="store_true",
+                   help="打印每条门槛的说明、出处，以及逐门课程的目标分")
+    p.add_argument("--all", action="store_true", help="连已达标项也打印")
+    p.set_defaults(func=cmd_goals)
+
+    p = sub.add_parser("activities", help="列出全部可加分活动与加分依据")
+    p.add_argument("--category", default="", help="只看某个类别")
+    p.add_argument("--level", default="", help="只看某个级别")
+    p.add_argument("--scored-only", action="store_true", help="只看有分值依据的")
+    p.set_defaults(func=cmd_activities)
+
+    p = sub.add_parser("calc", help="计算器数据自检：专业/课程/门槛/活动/口径")
+    p.set_defaults(func=cmd_calc)
 
     return ap
 

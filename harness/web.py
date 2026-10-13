@@ -1,14 +1,19 @@
 """简陋但够用的 Web 界面：标准库 http.server + SSE 流式输出。
 
 为什么不用 FastAPI：本机沙箱装不了包（指南 §3.4），而 http.server 足够
-支撑单用户使用，且零依赖。前端是一个内嵌的 HTML 页面，无构建步骤。
+支撑单用户使用，且零依赖。前端是内嵌的 HTML 页面，无构建步骤。
 
 路由：
   GET  /                    首页（内嵌 HTML/JS）
+  GET  /calc                绩点/综测计算器页面
+  GET  /calc-docs           计算器数据口径说明
   GET  /api/status          库状态 + LLM/公网搜索配置灯
   GET  /api/search?q=&k=    纯检索（不花 token）
   GET  /api/article?id=     读某篇正文
   GET  /api/ask?q=&rounds=  提问，SSE 流式返回 trace + answer
+  GET  /api/calc/catalog    计算器全部静态数据（专业/课程/规则/门槛/活动）
+  POST /api/calc/evaluate   提交成绩单 + 活动篮，返回完整计算结果
+  GET  /api/calc/target     反推：达到目标绩点时剩余课程需要的分数
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .agent import Agent
+from .calcpages import CALC_DOCS_PAGE, CALC_PAGE
 from .config import SETTINGS, SearchSettings
 from .llm import LLM
 from .store import Store
@@ -41,6 +47,9 @@ PAGE = r"""<!DOCTYPE html>
   header{background:var(--bg);border-bottom:1px solid var(--bd);padding:14px 22px;display:flex;
          align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
   header h1{font-size:17px;margin:0;font-weight:650}
+  nav.nav a{font-size:13px;color:var(--acc);text-decoration:none;border:1px solid var(--bd);
+            border-radius:99px;padding:3px 11px;background:var(--bg)}
+  nav.nav a:hover{background:var(--soft)}
   .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;font-size:12.5px}
   .pill{background:var(--soft);border:1px solid var(--bd);border-radius:99px;padding:3px 11px;color:var(--mut)}
   .pill.ok{color:var(--ok);border-color:#b7e0c2;background:#eaf7ee}
@@ -84,6 +93,7 @@ PAGE = r"""<!DOCTYPE html>
 <body>
 <header>
   <h1>🌾 SCAU 学生发展信息 Harness</h1>
+  <nav class="nav"><a href="/calc">📊 绩点 / 综测计算器</a></nav>
   <div class="pills" id="pills"><span class="pill">加载中…</span></div>
 </header>
 <main>
@@ -236,12 +246,32 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.urlsplit(self.path).query
         return {k: v[0] for k, v in urllib.parse.parse_qs(q).items()}
 
+    def _read_body(self) -> dict:
+        """读 POST body 并解析成 dict。"""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return {}
+        raw = self.rfile.read(length)
+        try:
+            data = json.loads(raw.decode("utf-8", "ignore") or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
     # ------------------------------------------------------------------ #
     def do_GET(self) -> None:                 # noqa: N802
         path = urllib.parse.urlsplit(self.path).path
         try:
             if path in ("/", "/index.html"):
                 self._send(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
+            elif path in ("/calc", "/calc/"):
+                self._send(200, CALC_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+            elif path in ("/calc-docs", "/calc-docs/"):
+                self._send(200, CALC_DOCS_PAGE.encode("utf-8"),
+                           "text/html; charset=utf-8")
             elif path == "/api/status":
                 self._status()
             elif path == "/api/search":
@@ -250,8 +280,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._article()
             elif path == "/api/ask":
                 self._ask()
+            elif path == "/api/calc/catalog":
+                self._calc_catalog()
+            elif path == "/api/calc/target":
+                self._calc_target()
             elif path == "/favicon.ico":
                 self._send(204, b"", "image/x-icon")
+            else:
+                self._json({"error": "not found"}, 404)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:
+            try:
+                self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+            except Exception:
+                pass
+
+    def do_POST(self) -> None:                # noqa: N802
+        path = urllib.parse.urlsplit(self.path).path
+        try:
+            if path == "/api/calc/evaluate":
+                self._calc_evaluate()
             else:
                 self._json({"error": "not found"}, 404)
         except (BrokenPipeError, ConnectionResetError):
@@ -305,6 +354,48 @@ class Handler(BaseHTTPRequestHandler):
         art = st.get_article(int(q.get("id") or 0), max_chars=20000)
         st.close()
         self._json(art or {"error": "not found"})
+
+    # ------------------------------------------------------------------ #
+    # 计算器 API
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _calculator():
+        """每次请求新建一个 Calculator。
+
+        `harness.calc` 只依赖 `data/calc/*.json`，不碰 SQLite，构造一次很便宜
+        （几毫秒）。刻意不做全局缓存，这样直接改数据文件、刷新页面就生效，
+        不需要重启服务，调参时省事。
+        """
+        from .calc import Calculator
+
+        return Calculator()
+
+    def _calc_catalog(self) -> None:
+        self._json(self._calculator().catalog())
+
+    def _calc_evaluate(self) -> None:
+        payload = self._read_body()
+        if not payload:
+            self._json({"error": "请求体不是合法 JSON"}, 400)
+            return
+        res = self._calculator().evaluate_dict(payload)
+        self._json(res.as_dict())
+
+    def _calc_target(self) -> None:
+        q = self._query()
+        try:
+            target = float(q.get("gpa") or 0)
+        except ValueError:
+            target = 0.0
+        scores = {}
+        raw = q.get("scores") or ""
+        if raw:
+            try:
+                scores = json.loads(raw)
+            except json.JSONDecodeError:
+                scores = {}
+        self._json(self._calculator().target_for_course(
+            q.get("major") or "", scores, target))
 
     # ------------------------------------------------------------------ #
     def _ask(self) -> None:

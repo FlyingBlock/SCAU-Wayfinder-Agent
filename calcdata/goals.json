@@ -1,0 +1,477 @@
+{
+  "_comment": [
+    "门槛数据：保研 / 考研 / 奖学金分别要什么。",
+    "每条门槛写成 {metric, op, value}，判定代码是纯数据驱动的。",
+    "",
+    "★ 保研门槛来自《华南农业大学推荐优秀应届本科毕业生免试攻读研究生实施办法",
+    "  （2025年修订）》华南农办〔2025〕32号，原文已下载核验；",
+    "  本地副本：data/research/docs/2f035ee6-b280-48e9-833c-a42560f6fe6b.txt",
+    "",
+    "★ 奖学金门槛来自《生命科学学院本科生综合测评及评优实施细则（2026年修订）》",
+    "  华南农生科党发〔2026〕4号 第十九条至第二十六条；",
+    "  本地副本：data/research/life_zhcp_A.txt",
+    "",
+    "metric 取值见 harness/calc/metrics.py 的 METRIC_DEFS。",
+    "credits_earned 的门槛值写 0 是占位：运行时会替换成所选培养方案的总学分。"
+  ],
+
+  "meta": {
+    "updated": "2026",
+    "basis": "华南农办〔2025〕32号（推免）、华南农生科党发〔2026〕4号（生科院综测与评优）",
+    "disclaimer": "门槛会随年份和学院变化。标 verified 的已对照原文；标 adjustable 的属可调比例，请以本学院当年细则为准。"
+  },
+
+  "goals": [
+    {
+      "id": "tuimian",
+      "name": "保研（推免）",
+      "kind": "route",
+      "summary": "华南农大推免的硬性学业门槛：前三学年平均学分绩点不低于 3.20，且 GPA 排名同届同专业前 50%（含）；按教学计划修完应修课程、无缓考课程、补考或重修后无不及格；四级不低于 425 分（或雅思 ≥5.5、托福 ≥80）；已通过国家学生体质健康标准测试；思想品德考核合格、无违纪处分。满足后按综合评价成绩排序：满分 100 = 学业成绩折算分 85 + 创新能力评价 10 + 发展素养评价 5。学院不组织笔试或面试。",
+      "formula": {"academic": 1.0, "innovation_score": 1.0, "development_literacy": 1.0},
+      "quota": "学校按教育部下达指标分配；学院按指标的 1.2 倍确定拟推荐名单（含 0.2 倍候补）。生命科学学院 2027 届名额：生物科学（理科基地班）24 人、生物科学 14 人、生物技术 12 人",
+      "source": "华南农办〔2025〕32号 第十条、第十一条、第十四条、第十六条；生科院 2027 年推免名额通知",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "ranking_gpa", "label": "前三学年平均学分绩点（GPA）", "op": ">=", "value": 3.2,
+          "hard": true,
+          "note": "第十一条（一）：学业平均学分绩点不低于 3.20。生科院细则里这项叫「学业平均学分绩点」，由学院按教务系统成绩核算。",
+          "source": "华南农办〔2025〕32号 第十一条（一）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "rank_percent", "label": "GPA 排名（同届同专业前 50%）", "op": "<=", "value": 50,
+          "hard": true,
+          "note": "第十一条（一）：排名位于同届同专业前 50%（含）。填专业人数和名次即可自动算出百分位。",
+          "source": "华南农办〔2025〕32号 第十一条（一）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "不及格课程门数", "op": "<=", "value": 0,
+          "hard": true,
+          "note": "第十一条（二）：按教学计划修完应修课程；无处于缓考状态课程；补考或重修后无不及格成绩。",
+          "source": "华南农办〔2025〕32号 第十一条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "cet4_score", "label": "全国大学英语四级（CET-4）分数", "op": ">=", "value": 425,
+          "hard": true,
+          "note": "第十一条（三）：CET-4 ≥ 425 分，或雅思 ≥ 5.5，或托福 ≥ 80。三者满足任一即可，本工具按四级判定。",
+          "source": "华南农办〔2025〕32号 第十一条（三）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "pe_pass", "label": "已通过国家学生体质健康标准测试", "op": "==", "value": 1,
+          "hard": true,
+          "note": "第十条（四）：已通过国家学生体质健康标准测试。填 1 = 已通过，0 = 未通过（免测按通过计）。",
+          "source": "华南农办〔2025〕32号 第十条（四）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0,
+          "hard": true,
+          "note": "第十条（三）：以德为先，思想品德考核不合格者不予推荐；无考试作弊或剽窃他人学术成果等行为，无违法违纪受处分记录。",
+          "source": "华南农办〔2025〕32号 第十条（三）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "gpa", "label": "当前平均学分绩点（提示）", "op": ">=", "value": 3.2,
+          "hard": false,
+          "note": "与第一条同值，作为「当前绩点」的对照显示。",
+          "source": "华南农办〔2025〕32号 第十一条（一）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "thesis_grade", "label": "毕业论文（设计）成绩（获资格后复核）", "op": ">=", "value": 3,
+          "hard": false,
+          "note": "第十八条（三）：获得推免资格后，第四学年 GPA 低于 3.20，或毕业论文（设计）成绩未达到良好及以上者，取消推免资格。填 4=优秀 3=良好 2=中等 1=及格。",
+          "source": "华南农办〔2025〕32号 第十八条（三）",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "tuimian_academic",
+      "name": "保研 · 学业成绩（85 分）",
+      "kind": "route",
+      "summary": "生命科学学院 2026 修订细则原文：『学业成绩以标准分换算，得分 = 个人绩点 / 同班型最高绩点 × 85』。注意分母是**同班型**（普通班与生物学国家理科基地班分开算）的第一名绩点，不是全专业最高。示例：个人 4.2 / 第一名 4.4 × 85 ≈ 81.14。学校层面另有一条口径「全学程平均学分绩点的百分制折算成绩」，学院具体换算以上述公式为准。",
+      "formula": {"academic": 1.0},
+      "quota": "满分 85 分（占综合评价 85%）",
+      "source": "生命科学学院推荐优秀应届本科毕业生免试攻读研究生综合评价细则（2026年修订）第 5 行；华南农办〔2025〕32号 第十四条（二）",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "ranking_gpa", "label": "学业平均学分绩点", "op": ">=", "value": 3.2, "hard": true,
+          "note": "85 分是折算分的满分，前提是先满足 3.20 的准入线。",
+          "source": "华南农办〔2025〕32号 第十一条（一）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "academic", "label": "学业成绩折算分（85 分制）", "op": ">=", "value": 76.5, "hard": false,
+          "note": "= 个人绩点 ÷ 同班型最高绩点 × 85。这里给 85 分的 90% 作为「有竞争力」的参考线。填了「同班型最高平均绩点」才算得准。",
+          "source": "生命科学学院推免综合评价细则（2026年修订）第 5 行",
+          "confidence": "adjustable"
+        }
+      ]
+    },
+
+    {
+      "id": "tuimian_innovation",
+      "name": "保研 · 创新能力（10 分）",
+      "kind": "route",
+      "summary": "满分 10 分，三类：① 发表论文（T1 基础分 8、T2 为 6、A 类 4、B 类 2、C 类 1；以第 1 作者发表 T1/T2/A 类研究论文直接给满 10 分）；② 学生竞赛（科技、文化艺术、体育；T1/T2 类竞赛一等奖、A 类 7、B 类 4；T1 基础分 8、T2 为 6、A 类 4、B 类 2、国家级大创 1、C 类竞赛或省级大创 0.6、校级 0.3）；③ 专利/品种（国家授权发明专利或新品种 1.5、实用新型或外观设计 1）。作者/完成人系数：第 2 位 ×0.8、第 3 位 ×0.6、第 4 位 ×0.4、第 5 位 ×0.2、其他 ×0.1。统计截止申请当年 8 月 31 日。",
+      "formula": {"innovation_score": 1.0},
+      "quota": "满分 10 分",
+      "source": "生命科学学院推荐优秀应届本科毕业生免试攻读研究生综合评价细则（2026年修订）第 6-23 行；华南农办〔2025〕32号 第十四条（三）",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "innovation_score", "label": "创新能力评价得分", "op": ">=", "value": 5, "hard": false,
+          "note": "细则只规定满分 10 分和加分项范围，没有最低分要求（不达标也能申请，只是排名靠后）。这里给 5 分作为「有竞争力」的参考线。一作一篇 T2 论文或国家级竞赛二等奖即可达到。",
+          "source": "生命科学学院推免综合评价细则（2026年修订）",
+          "confidence": "adjustable"
+        }
+      ]
+    },
+
+    {
+      "id": "tuimian_development",
+      "name": "保研 · 发展素养（5 分）",
+      "kind": "route",
+      "summary": "满分 5 分，五类：① 荣誉奖励（国家级 5、省级 1、校级标兵 0.5、校级 0.3、十五运和残特奥会优秀志愿者 0.1；同类取最高，不同类可累计，荣誉累计不超过 1.5 分）；② 学生工作（校院一级组织正副职 0.6、二级组织正副职或班长团支书等 0.4、部门负责人或其他委员 0.2、部门成员或助班心导 0.1；同一级别可累计，累计不超过 1.2 分）；③ 志愿服务（i志愿累计 ≥100 小时 0.5、≥40 小时 0.3，取单项最高不累计；无偿献血 0.1 可累计，不超过 0.3）；④ 国际交流（获资助赴境外 ≥3 月 0.4、≥1 月 0.3，取一次；赴境外学习 0.2 可累计，不超过 0.4）；⑤ 英语水平（六级 ≥500 或托福 ≥100 或雅思 ≥6.5 得 0.5；六级 ≥425 或托福 ≥90 或雅思 ≥6 得 0.3；四级 ≥425 或托福 ≥80 或雅思 ≥5.5 得 0.1，取单项最高）。⑥ 参军入伍服兵役 2 分。",
+      "formula": {"development_literacy": 1.0},
+      "quota": "满分 5 分（服兵役 2 分、国家级荣誉 5 分可直接满分）",
+      "source": "生命科学学院推荐优秀应届本科毕业生免试攻读研究生综合评价细则（2026年修订）第 24-42 行；华南农办〔2025〕32号 第十四条（四）",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "development_literacy", "label": "发展素养评价得分", "op": ">=", "value": 2.5, "hard": false,
+          "note": "没有最低分要求。这里给 2.5 分（满分一半）作为「有竞争力」的参考线。注意本级荣誉称号直接 5 分即满分。",
+          "source": "生命科学学院推免综合评价细则（2026年修订）",
+          "confidence": "adjustable"
+        }
+      ]
+    },
+
+    {
+      "id": "kaoyan",
+      "name": "考研（全国统考）",
+      "kind": "route",
+      "summary": "考研没有校内成绩门槛：只要是具有国家承认学历的应届本科毕业生即可报考，学校不设 GPA 或排名要求，也不举办任何形式的考前辅导班（教育部规定）。生物类对口专业：071000 生物学（学硕）初试为 ①101 思想政治理论 ②201 英语（一）③338 生物化学 ④872 细胞生物学；086001 生物技术与工程（专硕）为 ①101 政治 ②204 英语（二）③338 生物化学 ④872 细胞生物学。两者都不考数学。录取当年入学前必须取得本科毕业证书，否则录取资格无效。",
+      "formula": {},
+      "quota": "无校内名额限制",
+      "source": "华南农业大学研究生招生信息网 2027 年硕士研究生招生简章及专业目录（yzb.scau.edu.cn）",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "note": "报考条件只要求国家承认学历的应届本科毕业生、符合体检要求；无 GPA 与排名门槛。",
+          "source": "华南农业大学 2027 年硕士研究生招生简章 报考条件",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "不及格课程门数（影响能否按期毕业）", "op": "<=", "value": 0, "hard": false,
+          "note": "录取当年入学前必须取得国家承认的本科毕业证书，否则录取资格无效。有挂科要尽早补考。",
+          "source": "华南农业大学 2027 年硕士研究生招生简章",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "graduation",
+      "name": "毕业与学位（所有路线的前提）",
+      "kind": "route",
+      "summary": "毕业要修满培养方案规定的总学分并完成实践环节；体测成绩达不到 50 分者按结业处理；另外学校要求**必须取得 3 个创新创业实践活动学分方准予毕业**（华南农办〔2013〕2号 第二条），学科竞赛、大创项目、职业资格考证等都可以折算。",
+      "formula": {},
+      "quota": "",
+      "source": "培养方案；华南农办〔2013〕2号 第二条（创新创业学分 3 分）；华南农办〔2020〕85号（体测与毕业挂钩）",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "credits_earned", "label": "已获学分", "op": ">=", "value": 0, "hard": true,
+          "note": "门槛值由所选专业的培养方案总学分自动填入。",
+          "source": "专业培养方案",
+          "confidence": "provisional"
+        },
+        {
+          "metric": "innovation_credits", "label": "创新创业实践活动学分", "op": ">=", "value": 3, "hard": true,
+          "note": "华南农办〔2013〕2号 第二条：本科学生在规定的学习期限内，必须取得 3 个创新创业实践活动学分，方准予毕业。在活动篮里加入竞赛/大创/职业资格等活动后这个数字会自动累加。",
+          "source": "《华南农业大学创新创业学分认定暂行办法》华南农办〔2013〕2号 第二条",
+          "confidence": "verified"
+        },
+        {
+          "metric": "pe_score", "label": "体质健康测试成绩", "op": ">=", "value": 50, "hard": true,
+          "note": "华南农办〔2020〕85号：毕业时学生测试成绩达不到 50 分者按结业处理。免测按 60 分计。",
+          "source": "华南农业大学体育教学研究部通知（tyb.scau.edu.cn）引华南农办〔2020〕85号",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "不及格课程门数", "op": "<=", "value": 0, "hard": false,
+          "note": "有不及格课程需要补考或重修通过后才能毕业。",
+          "source": "《华南农业大学本科学生学分制实施细则》",
+          "confidence": "provisional"
+        }
+      ]
+    },
+
+    {
+      "id": "scholarship_school_1",
+      "name": "校级一等奖学金（优秀学生标兵）",
+      "kind": "scholarship",
+      "summary": "按学年综合素质测评结果评定，获奖人数为学院参加综合测评总人数的 2%，金额 3000 元/人，同时授予「优秀学生标兵」荣誉称号。生命科学学院综合奖学金的共同门槛：本学年平均绩点须达 3.00 及以上，且无细则第二十六条列举的禁止参评情形。",
+      "formula": {},
+      "quota": "学院参加综合测评总人数的 2%",
+      "amount": "3000 元/人 + 优秀学生标兵称号",
+      "source": "生科院细则第十九条（二）；第二十六条（禁止参评情形）",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "gpa", "label": "本学年平均绩点", "op": ">=", "value": 3.0, "hard": true,
+          "note": "细则第十九条：综合奖学金申报者的本学年平均绩点须达 3.00 及以上。",
+          "source": "生科院细则第十九条",
+          "confidence": "verified"
+        },
+        {
+          "metric": "comprehensive_rank_percent", "label": "综测排名百分位（学院前 2%）", "op": "<=", "value": 2, "hard": true,
+          "note": "获奖人数为学院参加综合测评总人数的 2%，按综测排名从高到低确定。注意分母是整个**学院**而不是你的专业。",
+          "source": "生科院细则第十九条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "当学年不及格课程门数", "op": "<=", "value": 0, "hard": true,
+          "note": "细则第二十六条（二）：该学年考试、考查科目有不及格的，不得参与奖学金评选。",
+          "source": "生科院细则第二十六条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "note": "细则第二十六条（一）：受到学校违纪处分且处分未解除的，不得参与奖学金评选。",
+          "source": "生科院细则第二十六条（一）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "pe_score", "label": "体质健康测试成绩", "op": ">=", "value": 80, "hard": true,
+          "note": "华南农办〔2020〕85号：学生测试成绩评定达 80 分及以上者方可参加评优与评奖（从 2020 级学生开始施行，此前为 75 分）。所以拿奖学金实际要 80 分，不只是「达标」——这里按 80 分判定。免测者仍可参加评优与评奖。",
+          "source": "《华南农业大学贯彻落实〈高等学校体育工作基本标准〉的实施方案》华南农办〔2020〕85号",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "当学年不及格课程门数", "op": "<=", "value": 0, "hard": true,
+          "note": "细则第二十六条（二）：该学年考试、考查科目有不及格的，不得参与奖学金评选。",
+          "source": "生科院细则第二十六条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "note": "细则第二十六条（一）：受到学校违纪处分且处分未解除的，不得参与奖学金评选。",
+          "source": "生科院细则第二十六条（一）",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "scholarship_school_2",
+      "name": "校级二等奖学金（优秀学生）",
+      "kind": "scholarship",
+      "summary": "按学年综合素质测评结果评定，获奖人数为学院参加综合测评总人数的 6%，金额 2000 元/人，同时授予「优秀学生」荣誉称号。同样要求本学年平均绩点 ≥3.00 且无禁止参评情形。",
+      "formula": {},
+      "quota": "学院参加综合测评总人数的 6%",
+      "amount": "2000 元/人 + 优秀学生称号",
+      "source": "生科院细则第十九条（三）；第二十六条",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "gpa", "label": "本学年平均绩点", "op": ">=", "value": 3.0, "hard": true,
+          "source": "生科院细则第十九条",
+          "confidence": "verified"
+        },
+        {
+          "metric": "comprehensive_rank_percent", "label": "综测排名百分位（学院前 6%）", "op": "<=", "value": 6, "hard": true,
+          "source": "生科院细则第十九条（三）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "当学年不及格课程门数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（一）",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "scholarship_school_3",
+      "name": "校级三等奖学金",
+      "kind": "scholarship",
+      "summary": "按学年综合素质测评结果评定，获奖人数为学院参加综合测评总人数的 10%，金额 1000 元/人。同样要求本学年平均绩点 ≥3.00 且无禁止参评情形。",
+      "formula": {},
+      "quota": "学院参加综合测评总人数的 10%",
+      "amount": "1000 元/人",
+      "source": "生科院细则第十九条（四）；第二十六条",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "gpa", "label": "本学年平均绩点", "op": ">=", "value": 3.0, "hard": true,
+          "source": "生科院细则第十九条",
+          "confidence": "verified"
+        },
+        {
+          "metric": "comprehensive_rank_percent", "label": "综测排名百分位（学院前 10%）", "op": "<=", "value": 10, "hard": true,
+          "source": "生科院细则第十九条（四）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "当学年不及格课程门数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（一）",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "scholarship_school_base",
+      "name": "生物科学（国家理科基地班）单列奖学金",
+      "kind": "scholarship",
+      "summary": "「生物学国家理科基地班」的综合奖学金评选单列，一、二、三等奖比例分别为 5%、10%、15%——比普通班的 2%/6%/10% 宽松得多，而且推免名额也多得多（2027 届基地班 24 人 vs 生物科学 14 人、生物技术 12 人）。",
+      "formula": {},
+      "quota": "基地班一/二/三等奖比例分别为 5% / 10% / 15%",
+      "amount": "同校级一/二/三等奖学金",
+      "source": "生科院细则第二十二条；生科院 2027 年推免名额通知",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "comprehensive_rank_percent", "label": "综测排名百分位（基地班前 5% 可获一等）", "op": "<=", "value": 5, "hard": true,
+          "note": "这个门槛是「基地班内」的排名，不是全院排名。基地班单列评奖、单列推免名额，是选班时的重要考量。",
+          "source": "生科院细则第二十二条",
+          "confidence": "verified"
+        },
+        {
+          "metric": "gpa", "label": "本学年平均绩点", "op": ">=", "value": 3.0, "hard": true,
+          "source": "生科院细则第十九条",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "scholarship_single",
+      "name": "单项奖学金（社会工作 / 文体 / 科技创新 / 精神文明 / 社会实践 / 创业实践 / 学习进步 / 学习优秀）",
+      "kind": "scholarship",
+      "summary": "八个子项，获奖比例不超过本学院参加综合测评总人数的 1%（学习进步奖、学习优秀奖除外），金额 500 元/人。学习优秀奖要求学习成绩绩点在本专业排名 5% 以内；学习进步奖要求绩点排名进步 50% 以上。注意：校内综合奖学金与校内单项奖学金只能申请其一，不能同时申请。",
+      "formula": {},
+      "quota": "不超过学院参加综合测评总人数的 1%（学习进步奖、学习优秀奖除外）",
+      "amount": "500 元/人",
+      "source": "生科院细则第二十条、第二十三条；生命科学学院评奖评优通知『申请单项奖的学生上学年体测分数需达到 80 分且未拟评为一二三等奖学金，每人限报一项』",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "pe_score", "label": "体质健康测试成绩（上学年）", "op": ">=", "value": 80, "hard": true,
+          "note": "生命科学学院评奖评优通知原文：『申请单项奖的学生上学年体测分数需达到 80 分且未拟评为一二三等奖学金，每人限报一项』。这一条是单项奖最硬的门槛——比成绩更容易卡人。",
+          "source": "生命科学学院评奖评优通知（life.scau.edu.cn/2025/1024/c19097a420341）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "当学年不及格课程门数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（一）",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "scholarship_national",
+      "name": "国家奖学金（含「丁颖」奖学金）",
+      "kind": "scholarship",
+      "summary": "面向二年级及以上特别优秀的全日制本科在校生。获得国家奖学金的学生即为「丁颖」奖学金获得者，由学校颁发「丁颖」奖学金证书（本科生最高荣誉奖学金）。生命科学学院 2026 年通知的硬指标：本学年学习成绩排名与综合测评成绩排名均位于专业前 10%（含）；没有进入前 10% 但达到前 30%（含）的，须在其他方面表现非常突出并提交经学校审核盖章的证明材料。校内奖学金与国家奖学金可同时申请，但不重复发放奖金，只取最高级别发放。",
+      "formula": {},
+      "quota": "名额据上级有关文件精神确定，学院在名额内按综合评价择优推荐；拟获奖名单需公示",
+      "amount": "10000 元/人/年（生命科学学院 2026 年通知口径；2024 年起国家由 8000 元提高）",
+      "source": "生命科学学院 2026 年本科生国家奖学金评选通知（life.scau.edu.cn/2026/0929/c10476a447492）；生科院细则第十六条、第十九条（一）、第二十四条",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "comprehensive_rank_percent", "label": "综合测评成绩排名（专业前 10%）", "op": "<=", "value": 10, "hard": true,
+          "note": "学院通知原文：『本学年学习成绩排名与综合测评成绩排名均位于专业前 10%（含 10%）』。注意分母是**专业**，不是学院。",
+          "source": "生命科学学院 2026 年国家奖学金评选通知",
+          "confidence": "verified"
+        },
+        {
+          "metric": "rank_percent", "label": "学习成绩排名（专业前 10%）", "op": "<=", "value": 10, "hard": true,
+          "note": "与综测排名需同时满足。未进前 10% 但达前 30%（含）的，须提交「其他方面表现非常突出」的证明材料。",
+          "source": "生命科学学院 2026 年国家奖学金评选通知",
+          "confidence": "verified"
+        },
+        {
+          "metric": "failed_count", "label": "当学年不及格课程门数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（二）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（一）",
+          "confidence": "verified"
+        },
+        {
+          "metric": "pe_score", "label": "体质健康测试成绩", "op": ">=", "value": 80, "hard": true,
+          "note": "华南农办〔2020〕85号：达 80 分及以上方可参加评优与评奖（2020 级起）。免测者仍可评优。",
+          "source": "华南农办〔2020〕85号；生科院细则第二十六条（五）",
+          "confidence": "verified"
+        }
+      ]
+    },
+
+    {
+      "id": "scholarship_national_need",
+      "name": "国家励志奖学金",
+      "kind": "scholarship",
+      "summary": "面向二年级及以上品学兼优、家庭经济困难的在校生。除了成绩与综测要求，还必须已通过学校家庭经济困难学生认定并入库——这个「困难认定」本工具无法判定，请以学工部认定结果为准。学院依据综测排名及家庭经济困难学生认定结果确定符合申请资格的学生名单。",
+      "formula": {},
+      "quota": "全校拟推荐 1050 人（2026 年口径）",
+      "amount": "6000 元/人/年（2026 年口径；2021 年校级办法为 5000 元）",
+      "source": "公共管理学院 2026 年国家励志奖学金通知（ggglxy.scau.edu.cn/2026/1001/c11886a447815）；生科院细则第十七条；《华南农业大学本科学生国家奖助学金管理办法》",
+      "confidence": "verified",
+      "requirements": [
+        {
+          "metric": "poverty_certified", "label": "已通过家庭经济困难认定", "op": "==", "value": 1, "hard": true,
+          "note": "填 1 = 已入库，0 = 未入库。这是励志奖学金与前两者的本质区别。",
+          "source": "生科院细则第十七条；国家励志奖学金评审办法",
+          "confidence": "verified"
+        },
+        {
+          "metric": "comprehensive_rank_percent", "label": "综测成绩排名（前 50%）", "op": "<=", "value": 50, "hard": true,
+          "note": "校级办法原文：『评审学年度学习成绩和综合测评成绩不低于前 50%』。",
+          "source": "《华南农业大学本科学生国家奖助学金管理办法》",
+          "confidence": "provisional"
+        },
+        {
+          "metric": "failed_count", "label": "当学年不及格课程门数", "op": "<=", "value": 0, "hard": true,
+          "note": "学校通知原文：『2025-2026 学年考试、考察科目无不及格』。",
+          "source": "公共管理学院 2026 年国家励志奖学金通知",
+          "confidence": "verified"
+        },
+        {
+          "metric": "discipline", "label": "违纪处分次数", "op": "<=", "value": 0, "hard": true,
+          "source": "生科院细则第二十六条（一）",
+          "confidence": "verified"
+        }
+      ]
+    }
+  ]
+}
