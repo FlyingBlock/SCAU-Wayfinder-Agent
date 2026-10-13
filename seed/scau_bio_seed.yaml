@@ -1,0 +1,478 @@
+meta:
+  source: web.md
+  note: "所有 URL 均按 web.md 原文逐条抄录（表格中只给相对路径的栏目一律用该表声明的前缀拼成绝对 URL）；状态映射为 ✅=ok、⚠️需登录=login_required、⚠️其它(跨协议跳转/JS渲染/重定向)=unverified 并在 mark 保留原记号、未确认=unverified、❌=broken、原文无状态标注的保守记为 unverified；请求的 10 个分组在文档中全部存在，无跳过；colleges_bio 只收录与竞赛/通知/讲座/学生发展/招生就业/科研进展相关的栏目，纯师资名录、院务公开、校友名录等未收录；表中仅列栏目号而未给出 list URL 的栏目（如 yjsy /241）未凭推测展开。"
+groups:
+  - id: competition_and_innovation
+    name: "创新创业与学科竞赛"
+    priority: 1
+    why: "生物专业学生参加国创、挑战杯、生化大赛等赛事的通知、立项与成果都在这几个入口发布。"
+    sites:
+      - {name: "创新创业学院门户", url: "https://cxcyxy.scau.edu.cn/", site: "cxcyxy.scau.edu.cn", status: ok, kind: single_page, topic: competition}
+      - {name: "创新创业学院—学院新闻", url: "https://cxcyxy.scau.edu.cn/4448/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—通知公告", url: "https://cxcyxy.scau.edu.cn/4449/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—发展动态", url: "https://cxcyxy.scau.edu.cn/4435/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—百千万工程", url: "https://cxcyxy.scau.edu.cn/bqwgc/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—双创课程", url: "https://cxcyxy.scau.edu.cn/4452/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—教学资源", url: "https://cxcyxy.scau.edu.cn/4453/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—双创实践", url: "https://cxcyxy.scau.edu.cn/scsj/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—双创赛事", url: "https://cxcyxy.scau.edu.cn/4439/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—国创大赛", url: "https://cxcyxy.scau.edu.cn/4457/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—挑战杯", url: "https://cxcyxy.scau.edu.cn/4458/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—双创平台", url: "https://cxcyxy.scau.edu.cn/4436/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—基地入孵", url: "https://cxcyxy.scau.edu.cn/4450/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—创业服务", url: "https://cxcyxy.scau.edu.cn/cyfw/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—双创活动", url: "https://cxcyxy.scau.edu.cn/4441/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—创新创业论坛", url: "https://cxcyxy.scau.edu.cn/4462/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—校科联社团", url: "https://cxcyxy.scau.edu.cn/4463/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—双创项目", url: "https://cxcyxy.scau.edu.cn/4438/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—创新创业计划", url: "https://cxcyxy.scau.edu.cn/4455/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—大创项目", url: "https://cxcyxy.scau.edu.cn/18824/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—大创年会", url: "https://cxcyxy.scau.edu.cn/18825/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—双创成果", url: "https://cxcyxy.scau.edu.cn/sccg/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—人物风采", url: "https://cxcyxy.scau.edu.cn/18828/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—优秀项目", url: "https://cxcyxy.scau.edu.cn/18829/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—竞赛管理", url: "https://cxcyxy.scau.edu.cn/jsgl/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—校企合作", url: "https://cxcyxy.scau.edu.cn/xqhz/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "创新创业学院—校友资源对接", url: "https://cxcyxy.scau.edu.cn/xyzydj/list.htm", site: "cxcyxy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "学科竞赛管理系统（下属系统）", url: "https://cxcygl.scau.edu.cn/", site: "cxcygl.scau.edu.cn", status: login_required, kind: system, topic: competition}
+      - {name: "校团委—科技创新", url: "https://xtw.scau.edu.cn/kjcx/list.htm", site: "xtw.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "校团委—攀登计划", url: "https://xtw.scau.edu.cn/pdjh/list.htm", site: "xtw.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "校团委—挑战杯", url: "https://xtw.scau.edu.cn/tzb/list.htm", site: "xtw.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "校团委—创青春", url: "https://xtw.scau.edu.cn/cqc/list.htm", site: "xtw.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "学工部—创新创业", url: "https://xg.scau.edu.cn/cxcy/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "本科生院—教务公告·实践教学科", url: "https://jwc.scau.edu.cn/5138/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—教务公告·教学研究科", url: "https://jwc.scau.edu.cn/5139/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—办事指南·实践教学科", url: "https://jwc.scau.edu.cn/5145/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—资料下载·实践教学科", url: "https://jwc.scau.edu.cn/5150/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—管理文件·实践教学管理", url: "https://jwc.scau.edu.cn/5130/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—办事指南·教学研究科（质量工程/教学成果奖）", url: "https://jwc.scau.edu.cn/jxyjypgzx/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "水利与土木工程学院—创新创业", url: "https://wcce.scau.edu.cn/xkjs_13642/list.htm", site: "wcce.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "海洋学院实验教学中心—创新创业", url: "https://hy.scau.edu.cn/hysyzx/cxcy/list.htm", site: "hy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "食品学院就业与创业信息网—创新创业成果", url: "https://spxy.scau.edu.cn/jiuye/cxcycgz/list.htm", site: "spxy.scau.edu.cn", status: ok, kind: list, topic: competition}
+  - id: undergraduate_academic
+    name: "本科生院（教务处）"
+    priority: 1
+    why: "学籍、培养方案、专业建设、实践教学与竞赛学分认定等本科教学口径的权威发布口。"
+    sites:
+      - {name: "本科生院门户", url: "https://jwc.scau.edu.cn/", site: "jwc.scau.edu.cn", status: ok, kind: single_page, topic: academic}
+      - {name: "本科生院—教务公告", url: "https://jwc.scau.edu.cn/5113/list.htm", site: "jwc.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "750 条 / 54 页"}
+      - {name: "本科生院—教务新闻", url: "https://jwc.scau.edu.cn/5114/list.htm", site: "jwc.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "153 条 / 11 页"}
+      - {name: "本科生院—教务公告·综合科", url: "https://jwc.scau.edu.cn/5133/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—教务公告·教学运行科", url: "https://jwc.scau.edu.cn/5134/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—教务公告·学籍科", url: "https://jwc.scau.edu.cn/5135/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—教务公告·教学质量管理科", url: "https://jwc.scau.edu.cn/5137/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—专业设置", url: "https://jwc.scau.edu.cn/5108/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—管理文件（总）", url: "https://jwc.scau.edu.cn/5109/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—办事指南（总）", url: "https://jwc.scau.edu.cn/5110/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—办事指南·学籍科", url: "https://jwc.scau.edu.cn/5142/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—办事指南·教学运行科", url: "https://jwc.scau.edu.cn/5143/list.htm", site: "jwc.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "本科生院—信息公开", url: "https://jwc.scau.edu.cn/xxgk/list.htm", site: "jwc.scau.edu.cn", status: ok, kind: list, topic: academic}
+      - {name: "本科生院—信息公开·院务会议", url: "https://jwc.scau.edu.cn/ywhyt/list.htm", site: "jwc.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "36 条 / 3 页"}
+      - {name: "本科生院—资料下载（总）", url: "https://jwc.scau.edu.cn/5111/list.htm", site: "jwc.scau.edu.cn", status: ok, kind: list, topic: academic}
+      - {name: "本科生院—旧版网站", url: "https://jwc.scau.edu.cn/_t291/main.psp", site: "jwc.scau.edu.cn", status: ok, kind: single_page, topic: academic}
+      - {name: "本科生院—旧版首页（站点区）", url: "https://jwc.scau.edu.cn/_s124/main.psp", site: "jwc.scau.edu.cn", status: ok, kind: single_page, topic: academic}
+      - {name: "教师教学发展中心—通知公告", url: "https://cfd.scau.edu.cn/tzgg/list.htm", site: "cfd.scau.edu.cn", status: ok, kind: list, topic: academic}
+      - {name: "本科教学评估专题", url: "https://jwc.scau.edu.cn/jxpg/", site: "jwc.scau.edu.cn", status: unverified, kind: single_page, topic: academic}
+  - id: graduate
+    name: "研究生院与研究生招生"
+    priority: 2
+    why: "研究生培养方案、学位、创新工程与国际交流项目决定生物专业学生的学术发展路线。"
+    sites:
+      - {name: "研究生院门户", url: "https://yjsy.scau.edu.cn/", site: "yjsy.scau.edu.cn", status: ok, kind: single_page, topic: academic}
+      - {name: "研究生院—工作动态/新闻动态", url: "https://yjsy.scau.edu.cn/207/list.htm", site: "yjsy.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "128 条 / 10 页"}
+      - {name: "研究生院—通知公告", url: "https://yjsy.scau.edu.cn/208/list.htm", site: "yjsy.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "1469 条 / 105 页"}
+      - {name: "研究生院—通知公告·培养办公室", url: "https://yjsy.scau.edu.cn/277/list.htm", site: "yjsy.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "研究生院—通知公告·学位办公室", url: "https://yjsy.scau.edu.cn/278/list.htm", site: "yjsy.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "研究生院—创新工程", url: "https://yjsy.scau.edu.cn/156/list.htm", site: "yjsy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "研究生院—办事流程", url: "https://yjsy.scau.edu.cn/214/list.htm", site: "yjsy.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "2 条"}
+      - {name: "研究生院—资料下载", url: "https://yjsy.scau.edu.cn/215/list.htm", site: "yjsy.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "研究生院—信息公开", url: "https://yjsy.scau.edu.cn/xxgk/list.htm", site: "yjsy.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "17 条 / 2 页"}
+      - {name: "研究生招生网", url: "https://yzb.scau.edu.cn/", site: "yzb.scau.edu.cn", status: unverified, kind: single_page, topic: admissions}
+  - id: student_affairs_and_youth_league
+    name: "学生工作部与校团委"
+    priority: 1
+    why: "奖助、心理健康、团学科技活动与社会实践的通知都由此下发，是学生发展路线的政策源。"
+    sites:
+      - {name: "党委学生工作部门户", url: "https://xg.scau.edu.cn/", site: "xg.scau.edu.cn", status: ok, kind: single_page, topic: student_affairs}
+      - {name: "学工部—新闻动态", url: "https://xg.scau.edu.cn/xwdt/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, mark: "⚠️HTTPS可访问，HTTP访问时跨协议循环"}
+      - {name: "学工部—通知公告·本科生", url: "https://xg.scau.edu.cn/bks/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, mark: "⚠️同上"}
+      - {name: "学工部—通知公告·研究生", url: "https://xg.scau.edu.cn/yjs/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, mark: "⚠️同上"}
+      - {name: "学工部—通知公告·教职工", url: "https://xg.scau.edu.cn/jzg/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, mark: "⚠️同上"}
+      - {name: "学工部—资助工作（总）", url: "https://xg.scau.edu.cn/jlzz/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "4 条"}
+      - {name: "学工部—奖助学金", url: "https://xg.scau.edu.cn/jxj/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "学工部—助学贷款", url: "https://xg.scau.edu.cn/zxdk/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "学工部—绿色通道", url: "https://xg.scau.edu.cn/lstd/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "学工部—心理健康", url: "https://xg.scau.edu.cn/xljk/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: single_page, topic: student_affairs}
+      - {name: "学工部—就业服务", url: "https://xg.scau.edu.cn/jyfw/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "学工部—共青团工作", url: "https://xg.scau.edu.cn/tjgz/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "学工部—信息公开", url: "https://xg.scau.edu.cn/xxgk/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "15 条 / 2 页"}
+      - {name: "学工部—办事指南", url: "https://xg.scau.edu.cn/bszn/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "5 条"}
+      - {name: "学工部—下载专区·业务表格", url: "https://xg.scau.edu.cn/ywbg/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "10 条"}
+      - {name: "学工部—下载专区·文件下载", url: "https://xg.scau.edu.cn/wjxz/list.htm", site: "xg.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "3 条"}
+      - {name: "学工部—智慧学工", url: "https://xg.scau.edu.cn/zhxg/list.htm", site: "xg.scau.edu.cn", status: unverified, kind: system, topic: student_affairs}
+      - {name: "大学生思政在线", url: "https://szzx.scau.edu.cn/", site: "szzx.scau.edu.cn", status: unverified, kind: single_page, topic: student_affairs, mark: "⚠️第11.2节列为业务系统类子域"}
+      - {name: "勤工助学", url: "http://qgzx.scau.edu.cn/", site: "qgzx.scau.edu.cn", status: unverified, kind: single_page, topic: student_affairs, mark: "⚠️第11.2节列为业务系统类子域"}
+      - {name: "学生工作系统门户（迎新/综测/学籍/学工队伍）", url: "http://xgxt.scau.edu.cn/", site: "xgxt.scau.edu.cn", status: login_required, kind: system, topic: student_affairs}
+      - {name: "团委门户", url: "https://xtw.scau.edu.cn/", site: "xtw.scau.edu.cn", status: ok, kind: single_page, topic: student_affairs}
+      - {name: "团委—新闻中心", url: "https://xtw.scau.edu.cn/1076/list.htm", site: "xtw.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "64 条 / 5 页"}
+      - {name: "团委—通知公告", url: "https://xtw.scau.edu.cn/tzgg/list.htm", site: "xtw.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "140 条 / 10 页"}
+      - {name: "团委—媒体报道", url: "https://xtw.scau.edu.cn/mtbd/list.htm", site: "xtw.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "184 条 / 14 页"}
+      - {name: "团委—学院风采", url: "https://xtw.scau.edu.cn/xyfc/list.htm", site: "xtw.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "300 条 / 22 页"}
+      - {name: "团委—学习路上", url: "https://xtw.scau.edu.cn/xxls/list.htm", site: "xtw.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "39 条 / 3 页"}
+      - {name: "团委—资料下载", url: "https://xtw.scau.edu.cn/zlxz/list.htm", site: "xtw.scau.edu.cn", status: ok, kind: list, topic: student_affairs}
+      - {name: "团委—团委概况", url: "https://xtw.scau.edu.cn/twgk/list.htm", site: "xtw.scau.edu.cn", status: ok, kind: list, topic: student_affairs}
+  - id: career
+    name: "就业创业信息网"
+    priority: 1
+    why: "招聘、宣讲会、实习岗位与就业质量年报是回答就业与发展路径的主要数据源。"
+    sites:
+      - {name: "新闻公告—通知公告", url: "https://jyzx.scau.edu.cn/module/news?type_id=720&menu_id=1006", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️非 list.htm 形态"}
+      - {name: "新闻公告—新闻快讯", url: "https://jyzx.scau.edu.cn/module/news?type_id=723&menu_id=1006", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "新闻公告—就业质量年报", url: "https://jyzx.scau.edu.cn/module/news?type_id=3951&menu_id=1006", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "招聘信息—招聘快讯", url: "https://jyzx.scau.edu.cn/module/news?type_id=19870&menu_id=1009", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "招聘信息—校内宣讲会", url: "https://jyzx.scau.edu.cn/module/careers?menu_id=1009", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "招聘信息—校外宣讲会", url: "https://jyzx.scau.edu.cn/module/careers?type=outer&menu_id=1009", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "招聘信息—在线招聘", url: "https://jyzx.scau.edu.cn/module/onlines?menu_id=1009", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "招聘信息—双选会", url: "https://jyzx.scau.edu.cn/module/jobfairs?menu_id=1009", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "招聘信息—正式岗位", url: "https://jyzx.scau.edu.cn/module/jobs?is_practice=0&menu_id=1009", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "招聘信息—实习岗位", url: "https://jyzx.scau.edu.cn/module/jobs?is_practice=1&menu_id=1009", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "生源信息—生源速览", url: "https://jyzx.scau.edu.cn/module/news?type_id=725&menu_id=1016", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "生源信息—学院专业", url: "https://jyzx.scau.edu.cn/module/news?type_id=726&menu_id=1016", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "业务指南—政策指南", url: "https://jyzx.scau.edu.cn/module/news?type_id=20213&menu_id=1057", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "业务指南—毕业生办事指南", url: "https://jyzx.scau.edu.cn/module/news?type_id=741&menu_id=1057", site: "jyzx.scau.edu.cn", status: unverified, kind: list, topic: career, mark: "⚠️同上"}
+      - {name: "生源信息（登录版）", url: "https://jyzx.scau.edu.cn/detail/student_source_info", site: "jyzx.scau.edu.cn", status: login_required, kind: system, topic: career}
+      - {name: "食品学院就业与创业信息网", url: "https://spxy.scau.edu.cn/jiuye/", site: "spxy.scau.edu.cn", status: ok, kind: single_page, topic: career}
+      - {name: "食品学院就业网—招聘信息", url: "https://spxy.scau.edu.cn/jiuye/16156/list.htm", site: "spxy.scau.edu.cn", status: ok, kind: list, topic: career}
+  - id: research_and_grants
+    name: "科学研究院与学术资源"
+    priority: 2
+    why: "科研项目、平台、成果转化与学术讲座是科研型发展路线（保研/读博/进实验室）的关键信息。"
+    sites:
+      - {name: "科学研究院门户", url: "https://kyy.scau.edu.cn/", site: "kyy.scau.edu.cn", status: ok, kind: single_page, topic: research}
+      - {name: "科学研究院—工作动态", url: "https://kyy.scau.edu.cn/gzdt/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "科学研究院—通知公告", url: "https://kyy.scau.edu.cn/tzgg/list.htm", site: "kyy.scau.edu.cn", status: ok, kind: list, topic: research, volume: "1798 条 / 129 页"}
+      - {name: "科学研究院—公示信息", url: "https://kyy.scau.edu.cn/gsxx/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research, mark: "⚠️跨协议跳转"}
+      - {name: "科学研究院—学术交流", url: "https://kyy.scau.edu.cn/xsjl/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "科学研究院—国家级科研平台", url: "https://kyy.scau.edu.cn/sbjyszdsys/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "科学研究院—广东省平台", url: "https://kyy.scau.edu.cn/gdspt/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "科学研究院—自设研究机构", url: "https://kyy.scau.edu.cn/xjkypt/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "科技成果转化网—新闻动态", url: "https://kyy.scau.edu.cn/ttc/xwdt/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "科技成果转化网—通知公告", url: "https://kyy.scau.edu.cn/ttc/tzgg/list.htm", site: "kyy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "科技成果转化网—科技成果", url: "https://kyy.scau.edu.cn/ttc/kjcg/list.htm", site: "kyy.scau.edu.cn", status: ok, kind: list, topic: research, volume: "59 条 / 4 页"}
+      - {name: "科技成果转化网—转化公示", url: "https://kyy.scau.edu.cn/ttc/zhgs/list.htm", site: "kyy.scau.edu.cn", status: ok, kind: list, topic: research, volume: "272 条 / 19 页"}
+      - {name: "主站—学术动态（数字栏目）", url: "https://www.scau.edu.cn/17863/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: research, volume: "756 条 / 76 页"}
+      - {name: "主站—学术动态（别名入口）", url: "https://www.scau.edu.cn/xsdt/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: research}
+      - {name: "主站—学术动态（首页版块）", url: "https://www.scau.edu.cn/17648/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: research, volume: "754 条 / 54 页"}
+      - {name: "主站—讲座论坛", url: "https://www.scau.edu.cn/17649/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: research, volume: "75 页"}
+      - {name: "华农学术成果库", url: "https://scholar.scau.edu.cn/", site: "scholar.scau.edu.cn", status: unverified, kind: system, topic: research}
+      - {name: "知识产权信息服务", url: "https://ipis.scau.edu.cn/", site: "ipis.scau.edu.cn", status: unverified, kind: single_page, topic: research}
+      - {name: "华农学报（在线投稿/阅读）", url: "http://xuebao.scau.edu.cn/ch/index.aspx", site: "xuebao.scau.edu.cn", status: unverified, kind: system, topic: research}
+      - {name: "国家植物航天育种工程技术研究中心", url: "https://htyzzx.scau.edu.cn/", site: "htyzzx.scau.edu.cn", status: ok, kind: single_page, topic: research}
+      - {name: "国家生猪种业工程技术研究中心", url: "https://hnszzx.scau.edu.cn/", site: "hnszzx.scau.edu.cn", status: ok, kind: single_page, topic: research}
+      - {name: "国家精准农业航空施药技术国际联合研究中心", url: "https://npaac.scau.edu.cn/", site: "npaac.scau.edu.cn", status: ok, kind: single_page, topic: research}
+      - {name: "转基因检测中心（农业部转基因植物环境安全测试中心）", url: "https://swjsxy.scau.edu.cn/", site: "swjsxy.scau.edu.cn", status: ok, kind: single_page, topic: research}
+      - {name: "广东省畜禽种质资源库/国家区域性畜禽基因库", url: "http://www.gdgenebank.scau.edu.cn/gw/", site: "www.gdgenebank.scau.edu.cn", status: ok, kind: single_page, topic: research}
+      - {name: "岭南农耕文明重点实验室", url: "https://rw.scau.edu.cn/lnngwmzdsys/list.htm", site: "rw.scau.edu.cn", status: ok, kind: list, topic: research}
+      - {name: "南方农业机械与装备关键技术教育部重点实验室", url: "https://gcxy.scau.edu.cn/nfnyjxyzbgjjsjybzdsys/list.htm", site: "gcxy.scau.edu.cn", status: ok, kind: list, topic: research}
+      - {name: "广东农村政策研究中心", url: "https://rprc.scau.edu.cn/", site: "rprc.scau.edu.cn", status: unverified, kind: single_page, topic: research}
+  - id: colleges_bio
+    name: "生物相关学院（含生命科学学院）"
+    priority: 1
+    why: "竞赛通知、讲座、学生活动与升学就业信息的第一落点是学院，生命科学学院为核心，农学/植保/林学/园艺/兽医/动科/资环/海洋/食品/生物质/材化/都柏林为邻接院系。"
+    sites:
+      - {name: "生命科学学院门户", url: "https://life.scau.edu.cn/", site: "life.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "生命科学—学院动态", url: "https://life.scau.edu.cn/xydt/list.htm", site: "life.scau.edu.cn", status: ok, kind: list, topic: college, volume: "259 条 / 19 页"}
+      - {name: "生命科学—通知公告", url: "https://life.scau.edu.cn/tzgg/list.htm", site: "life.scau.edu.cn", status: ok, kind: list, topic: college, volume: "645 条 / 47 页"}
+      - {name: "生命科学—通知公告·教师通知", url: "https://life.scau.edu.cn/jstz/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: college}
+      - {name: "生命科学—通知公告·学生通知", url: "https://life.scau.edu.cn/xstz/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: college}
+      - {name: "生命科学—通知公告·学术通知", url: "https://life.scau.edu.cn/xstz_19158/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: college}
+      - {name: "生命科学—学术动态", url: "https://life.scau.edu.cn/xsdt/list.htm", site: "life.scau.edu.cn", status: ok, kind: list, topic: college, volume: "83 条 / 6 页"}
+      - {name: "生命科学—讲座报告", url: "https://life.scau.edu.cn/jzbg/list.htm", site: "life.scau.edu.cn", status: ok, kind: list, topic: college, volume: "55 条 / 4 页"}
+      - {name: "生命科学—学工动态", url: "https://life.scau.edu.cn/10123/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "生命科学—学工·团学组织", url: "https://life.scau.edu.cn/10124/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "生命科学—学工·本科生工作", url: "https://life.scau.edu.cn/bksgz/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "生命科学—学工·研究生工作", url: "https://life.scau.edu.cn/yjsgz/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "生命科学—招生就业·本科招生", url: "https://life.scau.edu.cn/bkzs/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "生命科学—招生就业·研究生招生", url: "https://life.scau.edu.cn/yjszs/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "生命科学—招生就业·就业情况", url: "https://life.scau.edu.cn/10117/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "生命科学—学术交流", url: "https://life.scau.edu.cn/10104/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "生化大赛—第二十五届 2026", url: "https://life.scau.edu.cn/deswjw2026n/list.htm", site: "life.scau.edu.cn", status: ok, kind: list, topic: competition, volume: "3 条"}
+      - {name: "生化大赛—第二十四届 2025", url: "https://life.scau.edu.cn/dessjw2025n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—第二十三届 2024", url: "https://life.scau.edu.cn/dessjw2024n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—第二十二届 2023", url: "https://life.scau.edu.cn/desejw2023n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—第二十一届 2022", url: "https://life.scau.edu.cn/desyjw2022n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—第二十届 2021", url: "https://life.scau.edu.cn/desjw2021n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—第十九届 2020", url: "https://life.scau.edu.cn/dsjjw2020n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—第十八届 2019", url: "https://life.scau.edu.cn/dsbjw2019n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—第十七届 2018", url: "https://life.scau.edu.cn/dsqjw2018n/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生化大赛—往届大赛", url: "https://life.scau.edu.cn/wjds/list.htm", site: "life.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生命科学—旧版入口（webplus _s83）", url: "https://webplus.scau.edu.cn/_s83/main.psp", site: "webplus.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "农学院门户", url: "https://nxy.scau.edu.cn/", site: "nxy.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "农学院—学院新闻", url: "https://nxy.scau.edu.cn/xyxw/list.htm", site: "nxy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "183 条 / 23 页"}
+      - {name: "农学院—通知公告", url: "https://nxy.scau.edu.cn/tzgg/list.htm", site: "nxy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "191 条 / 24 页"}
+      - {name: "农学院—讲座论坛", url: "https://nxy.scau.edu.cn/jzltw/list.htm", site: "nxy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "61 条 / 8 页"}
+      - {name: "农学院—科研进展", url: "https://nxy.scau.edu.cn/kyjz/list.htm", site: "nxy.scau.edu.cn", status: ok, kind: list, topic: research, volume: "92 条 / 12 页"}
+      - {name: "农学院—学生工作", url: "https://nxy.scau.edu.cn/xsgz_17951/list.htm", site: "nxy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "农学院—学生工作·通知公告", url: "https://nxy.scau.edu.cn/tzgg_17977/list.htm", site: "nxy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "农学院—学生活动", url: "https://nxy.scau.edu.cn/xshd/list.htm", site: "nxy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "农学院—共青团工作", url: "https://nxy.scau.edu.cn/gqtgz/list.htm", site: "nxy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "农学院—招生工作", url: "https://nxy.scau.edu.cn/zsgz_18654/list.htm", site: "nxy.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "农学院—旧版入口（_t1378，重定向循环已失效）", url: "http://nxy.scau.edu.cn/_t1378/main.htm", site: "nxy.scau.edu.cn", status: broken, kind: single_page, topic: college, mark: "❌http↔https 重定向循环"}
+      - {name: "植物保护学院门户", url: "https://zb.scau.edu.cn/", site: "zb.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "植物保护—学院新闻", url: "https://zb.scau.edu.cn/xydt/list.htm", site: "zb.scau.edu.cn", status: ok, kind: list, topic: college, volume: "186 条 / 14 页"}
+      - {name: "植物保护—学院通知", url: "https://zb.scau.edu.cn/jgtz/list.htm", site: "zb.scau.edu.cn", status: ok, kind: list, topic: college, volume: "326 条 / 24 页"}
+      - {name: "植物保护—讲座预告", url: "https://zb.scau.edu.cn/jzyg_12113/list.htm", site: "zb.scau.edu.cn", status: ok, kind: list, topic: college, volume: "120 条 / 9 页"}
+      - {name: "植物保护—学术进展", url: "https://zb.scau.edu.cn/xsjz/list.htm", site: "zb.scau.edu.cn", status: ok, kind: list, topic: research, volume: "82 条 / 6 页"}
+      - {name: "植物保护—本科生通知", url: "https://zb.scau.edu.cn/bks/list.htm", site: "zb.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "310 条 / 23 页"}
+      - {name: "植物保护—研究生通知", url: "https://zb.scau.edu.cn/yjs/list.htm", site: "zb.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "189 条 / 14 页"}
+      - {name: "植物保护—招生就业", url: "https://zb.scau.edu.cn/zsjy/list.htm", site: "zb.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "植物保护—招生专栏", url: "https://zb.scau.edu.cn/yjszs/list.htm", site: "zb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "植物保护—学生工作", url: "https://zb.scau.edu.cn/xsgz/list.htm", site: "zb.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "植物保护—学生动态", url: "https://zb.scau.edu.cn/xsdt/list.htm", site: "zb.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "植物保护—团委", url: "https://zb.scau.edu.cn/tw/list.htm", site: "zb.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "植物保护—学生会", url: "https://zb.scau.edu.cn/xsh/list.htm", site: "zb.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "植物保护—学术交流", url: "https://zb.scau.edu.cn/xsjl/list.htm", site: "zb.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "植物保护—招生就业网（子站）", url: "http://zb.scau.edu.cn/zbzs", site: "zb.scau.edu.cn", status: unverified, kind: single_page, topic: career}
+      - {name: "林学与风景园林学院门户", url: "https://lf.scau.edu.cn/", site: "lf.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "林学—学院新闻", url: "https://lf.scau.edu.cn/885/list.htm", site: "lf.scau.edu.cn", status: ok, kind: list, topic: college, volume: "518 条 / 37 页"}
+      - {name: "林学—教工通知", url: "https://lf.scau.edu.cn/887/list.htm", site: "lf.scau.edu.cn", status: ok, kind: list, topic: college, volume: "317 条 / 23 页"}
+      - {name: "林学—学生通知", url: "https://lf.scau.edu.cn/888/list.htm", site: "lf.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "851 条 / 61 页"}
+      - {name: "林学—学术报告", url: "https://lf.scau.edu.cn/xsbg/list.htm", site: "lf.scau.edu.cn", status: ok, kind: list, topic: research, volume: "62 条 / 5 页"}
+      - {name: "林学—学生培养", url: "https://lf.scau.edu.cn/xspy/list.htm", site: "lf.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "93 条 / 7 页"}
+      - {name: "林学—学生工作", url: "https://lf.scau.edu.cn/xsgzw/list.htm", site: "lf.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "林学—学生动态", url: "https://lf.scau.edu.cn/xsdt/list.htm", site: "lf.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "林学—招生就业", url: "https://lf.scau.edu.cn/zsjyw/list.htm", site: "lf.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "林学—本科生招生信息", url: "https://lf.scau.edu.cn/bkszsxx/list.htm", site: "lf.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "林学—研究生招生信息", url: "https://lf.scau.edu.cn/yjszsxx/list.htm", site: "lf.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "林学—科研动态", url: "https://lf.scau.edu.cn/kydt/list.htm", site: "lf.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "园艺学院门户", url: "https://yy.scau.edu.cn/", site: "yy.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "园艺—新闻中心", url: "https://yy.scau.edu.cn/2447/list.htm", site: "yy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "309 条 / 23 页"}
+      - {name: "园艺—通知公告", url: "https://yy.scau.edu.cn/2448/list.htm", site: "yy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "1083 条 / 78 页"}
+      - {name: "园艺—学术报告", url: "https://yy.scau.edu.cn/2449/list.htm", site: "yy.scau.edu.cn", status: ok, kind: list, topic: research, volume: "108 条 / 8 页"}
+      - {name: "园艺—学生动态", url: "https://yy.scau.edu.cn/2439/list.htm", site: "yy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "园艺—创新创业", url: "https://yy.scau.edu.cn/2440/list.htm", site: "yy.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "园艺—招生就业", url: "https://yy.scau.edu.cn/zscy/list.htm", site: "yy.scau.edu.cn", status: ok, kind: list, topic: career, mark: "文章前缀 c9050"}
+      - {name: "园艺—教学科研（动态）", url: "https://yy.scau.edu.cn/jxky/list.htm", site: "yy.scau.edu.cn", status: ok, kind: list, topic: academic, mark: "文章前缀 c9052"}
+      - {name: "园艺—招生网（子站）", url: "https://yy.scau.edu.cn/zs/", site: "yy.scau.edu.cn", status: unverified, kind: single_page, topic: admissions}
+      - {name: "兽医学院门户", url: "https://vet.scau.edu.cn/", site: "vet.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "兽医—新闻动态", url: "https://vet.scau.edu.cn/860/list.htm", site: "vet.scau.edu.cn", status: ok, kind: list, topic: college, volume: "455 条 / 33 页"}
+      - {name: "兽医—学院动态（父栏目）", url: "https://vet.scau.edu.cn/814/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: college}
+      - {name: "兽医—通知公告", url: "https://vet.scau.edu.cn/tzgg/list.htm", site: "vet.scau.edu.cn", status: broken, kind: list, topic: college, mark: "⚠️抓取失败（跨协议重定向循环），栏目 id c18287"}
+      - {name: "兽医—学术活动公告", url: "https://vet.scau.edu.cn/939/list.htm", site: "vet.scau.edu.cn", status: ok, kind: list, topic: research, mark: "文章前缀 c939"}
+      - {name: "兽医—教学动态", url: "https://vet.scau.edu.cn/jxdt/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: academic}
+      - {name: "兽医—科研进展", url: "https://vet.scau.edu.cn/862/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "兽医—学术交流", url: "https://vet.scau.edu.cn/xsjl/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "兽医—学生工作", url: "https://vet.scau.edu.cn/809/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "兽医—学生动态", url: "https://vet.scau.edu.cn/857/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "兽医—学生成果", url: "https://vet.scau.edu.cn/xscg/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "兽医—就业工作", url: "https://vet.scau.edu.cn/855/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "兽医—就业信息", url: "https://vet.scau.edu.cn/856/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "兽医—招生就业", url: "https://vet.scau.edu.cn/zsjy/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "兽医—本科生招生简章", url: "https://vet.scau.edu.cn/848/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "兽医—研究生招生简章", url: "https://vet.scau.edu.cn/844/list.htm", site: "vet.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "动物科学学院门户", url: "https://dongke.scau.edu.cn/", site: "dongke.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "动科—学院动态", url: "https://dongke.scau.edu.cn/xydt/list.htm", site: "dongke.scau.edu.cn", status: ok, kind: list, topic: college, volume: "319 条 / 23 页"}
+      - {name: "动科—交流活动（含动科大讲坛）", url: "https://dongke.scau.edu.cn/jlhd_10003/list.htm", site: "dongke.scau.edu.cn", status: ok, kind: list, topic: research, volume: "137 条 / 10 页"}
+      - {name: "动科—学生工作", url: "https://dongke.scau.edu.cn/614/list.htm", site: "dongke.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "动科—学工·规章制度", url: "https://dongke.scau.edu.cn/649/list.htm", site: "dongke.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "动科—研究生招生目录", url: "https://dongke.scau.edu.cn/yjszsml/list.htm", site: "dongke.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "动科—招生就业·专业视频", url: "https://dongke.scau.edu.cn/zyjs/list.htm", site: "dongke.scau.edu.cn", status: ok, kind: list, topic: admissions, volume: "14 条"}
+      - {name: "动科—招生就业·本科生招生", url: "https://dongke.scau.edu.cn/bkszs/list.htm", site: "dongke.scau.edu.cn", status: ok, kind: list, topic: admissions, volume: "10 条"}
+      - {name: "动科—招生就业·研究生招生", url: "https://dongke.scau.edu.cn/yjszs/list.htm", site: "dongke.scau.edu.cn", status: ok, kind: list, topic: admissions, volume: "94 条 / 7 页"}
+      - {name: "动科—招生就业·升学就业", url: "https://dongke.scau.edu.cn/jy/list.htm", site: "dongke.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "动科—升学", url: "https://dongke.scau.edu.cn/sx/list.htm", site: "dongke.scau.edu.cn", status: ok, kind: list, topic: career, volume: "2 条"}
+      - {name: "动科—就业", url: "https://dongke.scau.edu.cn/jy_10546/list.htm", site: "dongke.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "资源环境学院门户", url: "https://zyhjxy.scau.edu.cn/", site: "zyhjxy.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "资环—学院要闻", url: "https://zyhjxy.scau.edu.cn/xyyw/list.htm", site: "zyhjxy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "223 条 / 16 页"}
+      - {name: "资环—通知公告", url: "https://zyhjxy.scau.edu.cn/tzgg_19902/list.htm", site: "zyhjxy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "422 条 / 31 页"}
+      - {name: "资环—科教动态（学术报告/科研进展）", url: "https://zyhjxy.scau.edu.cn/kjdt_19378/list.htm", site: "zyhjxy.scau.edu.cn", status: ok, kind: list, topic: research}
+      - {name: "资环—学术活动（讲座报告）", url: "https://zyhjxy.scau.edu.cn/xshd/list.htm", site: "zyhjxy.scau.edu.cn", status: ok, kind: list, topic: research, volume: "11 条"}
+      - {name: "资环—学工动态", url: "https://zyhjxy.scau.edu.cn/xgdt_19919/list.htm", site: "zyhjxy.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "11 条"}
+      - {name: "资环—学生工作（栏目组）", url: "https://zyhjxy.scau.edu.cn/xsgzw/list.htm", site: "zyhjxy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "资环—招生就业动态", url: "https://zyhjxy.scau.edu.cn/zsjydt/list.htm", site: "zyhjxy.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "资环—本科生招生", url: "https://zyhjxy.scau.edu.cn/zsjz_18752/list.htm", site: "zyhjxy.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "资环—研究生招生", url: "https://zyhjxy.scau.edu.cn/yjszs/list.htm", site: "zyhjxy.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "资环—旧版入口（webplus _s82）", url: "https://webplus.scau.edu.cn/_s82/main.psp", site: "webplus.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "海洋学院门户", url: "https://hy.scau.edu.cn/", site: "hy.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "海洋—学院新闻", url: "https://hy.scau.edu.cn/xyxw/list.htm", site: "hy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "718 条 / 52 页"}
+      - {name: "海洋—教工通知", url: "https://hy.scau.edu.cn/jgtz2026/list.htm", site: "hy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "40 条 / 3 页"}
+      - {name: "海洋—学生通知", url: "https://hy.scau.edu.cn/xstz2026/list.htm", site: "hy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs, mark: "未确认 c5388"}
+      - {name: "海洋—学生活动", url: "https://hy.scau.edu.cn/xshd2026/list.htm", site: "hy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs, mark: "未确认 c19885"}
+      - {name: "海洋—学生工作", url: "https://hy.scau.edu.cn/xsgz/list.htm", site: "hy.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "6 条"}
+      - {name: "海洋—学生工作·通知公告", url: "https://hy.scau.edu.cn/tzgg/list.htm", site: "hy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "海洋—招生就业", url: "https://hy.scau.edu.cn/5384/list.htm", site: "hy.scau.edu.cn", status: ok, kind: list, topic: career, volume: "2 条"}
+      - {name: "海洋—招生就业·招聘实习", url: "https://hy.scau.edu.cn/5407/list.htm", site: "hy.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "海洋—招生就业·招生宣传", url: "https://hy.scau.edu.cn/5408/list.htm", site: "hy.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "海洋—旧版入口（webplus _s125/_t1778）", url: "https://webplus.scau.edu.cn/_s125/_t1778/main.psp", site: "webplus.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "食品学院门户", url: "https://spxy.scau.edu.cn/", site: "spxy.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "食品—学院要闻/新闻动态", url: "https://spxy.scau.edu.cn/6186/list.htm", site: "spxy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "869 条，分页至 list63"}
+      - {name: "食品—学院通告/通知公告", url: "https://spxy.scau.edu.cn/6187/list.htm", site: "spxy.scau.edu.cn", status: ok, kind: list, topic: college, volume: "1335 条，分页至 list96"}
+      - {name: "食品—思政动态", url: "https://spxy.scau.edu.cn/szdt/list.htm", site: "spxy.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "499 条，分页至 list36"}
+      - {name: "食品—学术交流（食品大讲堂）", url: "https://spxy.scau.edu.cn/xsjl/list.htm", site: "spxy.scau.edu.cn", status: ok, kind: list, topic: research, volume: "73 条 c17186"}
+      - {name: "食品—学生工作", url: "https://spxy.scau.edu.cn/6180/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "食品—院团委、学工办", url: "https://spxy.scau.edu.cn/ytwwxgb/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "食品—招生就业", url: "https://spxy.scau.edu.cn/6181/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "食品—本科生招生", url: "https://spxy.scau.edu.cn/6234/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "食品—招生计划", url: "https://spxy.scau.edu.cn/6242/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "食品—本科生历年就业情况", url: "https://spxy.scau.edu.cn/6245/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "食品—本科生各专业升学情况", url: "https://spxy.scau.edu.cn/6249/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "食品—研究生招生", url: "https://spxy.scau.edu.cn/6235/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "食品—学科动态", url: "https://spxy.scau.edu.cn/xkdt/list.htm", site: "spxy.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "食品—就业与创业信息网入口", url: "https://spxy.scau.edu.cn/jiuye/main.htm", site: "spxy.scau.edu.cn", status: ok, kind: list, topic: career}
+      - {name: "材料与化学工程学院门户", url: "https://cmce.scau.edu.cn/", site: "cmce.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "材化—学院新闻/学院要闻", url: "https://cmce.scau.edu.cn/xyxw/list.htm", site: "cmce.scau.edu.cn", status: ok, kind: list, topic: college, volume: "61 条，分页至 list5"}
+      - {name: "材化—通知公告（父栏目）", url: "https://cmce.scau.edu.cn/tzgg/list.htm", site: "cmce.scau.edu.cn", status: ok, kind: list, topic: college, volume: "106 条，分页至 list8"}
+      - {name: "材化—教工通知", url: "https://cmce.scau.edu.cn/4639/list.htm", site: "cmce.scau.edu.cn", status: ok, kind: list, topic: college, volume: "12 条"}
+      - {name: "材化—学生通知", url: "https://cmce.scau.edu.cn/4640/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "材化—学术讲座（材化论坛）", url: "https://cmce.scau.edu.cn/4581/list.htm", site: "cmce.scau.edu.cn", status: ok, kind: list, topic: research, volume: "10 条"}
+      - {name: "材化—学生动态", url: "https://cmce.scau.edu.cn/ssdt/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "材化—学生工作", url: "https://cmce.scau.edu.cn/4557/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "材化—学生动态（学生工作下级）", url: "https://cmce.scau.edu.cn/4602/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "材化—招生与就业", url: "https://cmce.scau.edu.cn/4558/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "材化—本科生（招生）", url: "https://cmce.scau.edu.cn/4615/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "材化—研究生（招生）", url: "https://cmce.scau.edu.cn/yjszs/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "材化—党建工作（动态）", url: "https://cmce.scau.edu.cn/djdt/list.htm", site: "cmce.scau.edu.cn", status: unverified, kind: list, topic: college}
+      - {name: "生物质学院门户", url: "https://cfb.scau.edu.cn/", site: "cfb.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "生物质—学院新闻", url: "https://cfb.scau.edu.cn/xyxw/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: college, volume: "99 条 / 8 页"}
+      - {name: "生物质—公告", url: "https://cfb.scau.edu.cn/gwg/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: college, volume: "9 条"}
+      - {name: "生物质—教工通知", url: "https://cfb.scau.edu.cn/jgtz/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: college, volume: "14 条"}
+      - {name: "生物质—本科生通知", url: "https://cfb.scau.edu.cn/bkstz/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "57 条 / 5 页"}
+      - {name: "生物质—研究生通知", url: "https://cfb.scau.edu.cn/yjstz/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: academic, volume: "54 条 / 4 页"}
+      - {name: "生物质—学术讲座（空栏目）", url: "https://cfb.scau.edu.cn/xsjz/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: research, mark: "空栏目"}
+      - {name: "生物质—科研进展（空栏目）", url: "https://cfb.scau.edu.cn/kyjz/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: research, mark: "空栏目"}
+      - {name: "生物质—学生动态", url: "https://cfb.scau.edu.cn/xgdw/list.htm", site: "cfb.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "12 条（栏目页 /xsgz 渲染此页）"}
+      - {name: "生物质—创新创业", url: "https://cfb.scau.edu.cn/xsst/list.htm", site: "cfb.scau.edu.cn", status: unverified, kind: list, topic: competition}
+      - {name: "生物质—就业创业", url: "https://cfb.scau.edu.cn/jycy/list.htm", site: "cfb.scau.edu.cn", status: unverified, kind: list, topic: career}
+      - {name: "生物质—本科生招生", url: "https://cfb.scau.edu.cn/bkszs/list.htm", site: "cfb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "生物质—研究生招生", url: "https://cfb.scau.edu.cn/yjszs/list.htm", site: "cfb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "广州都柏林国际生命科学与技术学院门户", url: "https://gdic.scau.edu.cn/", site: "gdic.scau.edu.cn", status: ok, kind: single_page, topic: college}
+      - {name: "都柏林—学院新闻", url: "https://gdic.scau.edu.cn/xyxw/list.htm", site: "gdic.scau.edu.cn", status: unverified, kind: list, topic: college, mark: "未确认（实测重定向至站点根），栏目实体 c11154"}
+      - {name: "都柏林—通知公告", url: "https://gdic.scau.edu.cn/tzgg/list.htm", site: "gdic.scau.edu.cn", status: unverified, kind: list, topic: college, mark: "未确认（实测重定向至站点根），栏目实体 c11155"}
+      - {name: "都柏林—招生信息", url: "https://gdic.scau.edu.cn/zsjz/list.htm", site: "gdic.scau.edu.cn", status: ok, kind: list, topic: admissions, volume: "11 条 / 2 页"}
+      - {name: "都柏林—学生工作·学生动态", url: "https://gdic.scau.edu.cn/xsdt/list.htm", site: "gdic.scau.edu.cn", status: ok, kind: list, topic: student_affairs, volume: "20 条 / 2 页"}
+      - {name: "都柏林—学生工作", url: "https://gdic.scau.edu.cn/xsgz/list.htm", site: "gdic.scau.edu.cn", status: unverified, kind: list, topic: student_affairs}
+      - {name: "都柏林—英文站学院新闻", url: "http://gdic.scau.edu.cn/gdicen/COLLEGENEWS/list.htm", site: "gdic.scau.edu.cn", status: unverified, kind: list, topic: college}
+  - id: admissions
+    name: "本科招生网"
+    priority: 3
+    why: "专业设置、特色班与招生政策帮助判断生物类专业的入口与培养类型。"
+    sites:
+      - {name: "本科招生网门户", url: "https://zsb.scau.edu.cn/", site: "zsb.scau.edu.cn", status: unverified, kind: single_page, topic: admissions}
+      - {name: "招生快讯—普通类招生", url: "http://zsb.scau.edu.cn/ptlzs/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "招生快讯—国际化办学", url: "https://zsb.scau.edu.cn/gjhrcpyb/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "招生政策", url: "http://zsb.scau.edu.cn/4284/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "招生政策—招生章程", url: "http://zsb.scau.edu.cn/4293/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "招生计划", url: "https://zsb.scau.edu.cn/gd_20001/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "招生简章", url: "http://zsb.scau.edu.cn/zsjz/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "历年分数—历年专业录取分数", url: "http://zsb.scau.edu.cn/lnlqfs/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "历年分数—历年学校投档分数", url: "http://zsb.scau.edu.cn/lnfs_9044/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "招宣动态", url: "http://zsb.scau.edu.cn/zsxcdt/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "特色班介绍", url: "http://zsb.scau.edu.cn/tsbjs/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "热点关注", url: "http://zsb.scau.edu.cn/rdgz/list.htm", site: "zsb.scau.edu.cn", status: unverified, kind: list, topic: admissions}
+      - {name: "考生常见问题解答", url: "https://zsb.scau.edu.cn/gkzxjd/", site: "zsb.scau.edu.cn", status: unverified, kind: single_page, topic: admissions}
+  - id: schoolwide_news_and_notices
+    name: "学校主站新闻与通知"
+    priority: 3
+    why: "校级要闻、通知与讲座论坛提供跨学院的背景与政策口径。"
+    sites:
+      - {name: "主站新闻网（聚合）", url: "https://www.scau.edu.cn/xww/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: general}
+      - {name: "主站—学校要闻", url: "https://www.scau.edu.cn/xxyw/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: general, volume: "每页 14 条，共 204 页"}
+      - {name: "主站—学校要闻（数字栏目）", url: "https://www.scau.edu.cn/17646/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: general, volume: "每页 10 条，共 285 页"}
+      - {name: "主站—媒体华农", url: "https://www.scau.edu.cn/17864/list.htm", site: "www.scau.edu.cn", status: ok, kind: list, topic: general, volume: "4598 条 / 460 页（每页 10 条）"}
+      - {name: "主站—通知公告（科研类）", url: "https://www.scau.edu.cn/1390/list.htm", site: "www.scau.edu.cn", status: login_required, kind: list, topic: general, mark: "⚠️跳转 cas.scau.edu.cn，需登录"}
+      - {name: "学校规章", url: "https://xngk.scau.edu.cn/gzzd/list.htm", site: "xngk.scau.edu.cn", status: ok, kind: list, topic: general}
+      - {name: "信息公开网", url: "https://xxgk.scau.edu.cn/", site: "xxgk.scau.edu.cn", status: login_required, kind: system, topic: general, mark: "⚠️需登录"}
+      - {name: "宣传部—学校要闻", url: "https://xcb.scau.edu.cn/xxyw/list.htm", site: "xcb.scau.edu.cn", status: ok, kind: list, topic: general, volume: "2843 条 / 57 页"}
+      - {name: "宣传部—媒体华农", url: "https://xcb.scau.edu.cn/380/list.htm", site: "xcb.scau.edu.cn", status: ok, kind: list, topic: general, volume: "4597 条 / 92 页"}
+      - {name: "党政办公室—学校要闻", url: "https://dwbgs.scau.edu.cn/xxyw/list.htm", site: "dwbgs.scau.edu.cn", status: ok, kind: list, topic: general, volume: "2844 条 / 204 页"}
+      - {name: "电子校报", url: "https://hnxb.scau.edu.cn/", site: "hnxb.scau.edu.cn", status: ok, kind: single_page, topic: general}
+  - id: library_and_resources
+    name: "图书馆与学术资源"
+    priority: 4
+    why: "文献检索、数据库培训与论文检测是竞赛与科研选题的基础支撑。"
+    sites:
+      - {name: "图书馆门户", url: "https://lib.scau.edu.cn/", site: "lib.scau.edu.cn", status: ok, kind: single_page, topic: general}
+      - {name: "图书馆—通知公告", url: "https://lib.scau.edu.cn/tzgg/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: general}
+      - {name: "图书馆—新闻通知（聚合）", url: "http://lib.scau.edu.cn/xwtz/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: general}
+      - {name: "图书馆—电子资源", url: "https://lib.scau.edu.cn/dzzy/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: general}
+      - {name: "图书馆—科研服务", url: "https://lib.scau.edu.cn/kyfw/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "图书馆—科技查新", url: "http://lib.scau.edu.cn/kjcx/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: research}
+      - {name: "图书馆—研究生新生入馆培训", url: "http://lib.scau.edu.cn/yjsrxpx/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: general}
+      - {name: "图书馆—论文相似性检测", url: "http://lib.scau.edu.cn/xsbdylwxsxjc/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: general}
+      - {name: "图书馆—FAQ 常见问题", url: "http://lib.scau.edu.cn/yjhkswd/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: general}
+      - {name: "图书馆—数据库试用/购买", url: "https://lib.scau.edu.cn/kx_14371/list.htm", site: "lib.scau.edu.cn", status: unverified, kind: list, topic: general}
+excluded:
+  - {url_or_pattern: "http://portal.scau.edu.cn/", reason: "登录墙（融合门户，⚠️需登录）"}
+  - {url_or_pattern: "https://cas.scau.edu.cn", reason: "登录墙（统一身份认证，⚠️需登录）"}
+  - {url_or_pattern: "https://xxgk.scau.edu.cn/", reason: "登录墙（信息公开网，⚠️需登录）"}
+  - {url_or_pattern: "https://mail.scau.edu.cn", reason: "登录墙（教工邮箱，⚠️需登录）"}
+  - {url_or_pattern: "https://webplus.scau.edu.cn/login.jsp?inner=1", reason: "登录墙（网站群管理后台，⚠️仅管理）"}
+  - {url_or_pattern: "http://oa.scau.edu.cn/seeyon/", reason: "登录墙（OA 办公系统，⚠️需登录）"}
+  - {url_or_pattern: "https://service.scau.edu.cn/taskcenter-v4-new/workflow/index", reason: "登录墙（网上办事大厅，⚠️需登录）"}
+  - {url_or_pattern: "https://service.scau.edu.cn/scau_cms_yx/portal/letter_sy.jsp", reason: "登录墙（校长信箱，⚠️）"}
+  - {url_or_pattern: "https://www.scau.edu.cn/1390/list.htm", reason: "登录墙（跳转 cas.scau.edu.cn，⚠️需登录）"}
+  - {url_or_pattern: "https://jwc.scau.edu.cn/**", reason: "第 3.10 节提示部分 .htm 列表页在 https 下命中 scheme 跳转，需改用同栏目 /_s124/xxx/list.psp"}
+  - {url_or_pattern: "jwzf.scau.edu.cn / jwxt.scau.edu.cn", reason: "登录墙（教务管理系统，第 11.2 节业务系统）"}
+  - {url_or_pattern: "jwxtxs.scau.edu.cn", reason: "登录墙（旧教务系统，⚠️需登录）"}
+  - {url_or_pattern: "jkpt.jwc.scau.edu.cn", reason: "登录墙（教学质量监控平台，第 11.2 节业务系统）"}
+  - {url_or_pattern: "pgzx.scau.edu.cn", reason: "登录墙（质量工程网，第 11.2 节业务系统）"}
+  - {url_or_pattern: "bkbylw.scau.edu.cn", reason: "登录墙（毕业论文设计系统，第 11.2 节业务系统）"}
+  - {url_or_pattern: "kyglxt.scau.edu.cn", reason: "登录墙（科研管理系统，第 11.2 节业务系统）"}
+  - {url_or_pattern: "xgxt.scau.edu.cn", reason: "登录墙（学生工作系统门户，第 11.2 节业务系统）"}
+  - {url_or_pattern: "cxcygl.scau.edu.cn", reason: "登录墙（学科竞赛管理系统，第 11.2 节业务系统；已列入 competition_and_innovation 但预期需认证）"}
+  - {url_or_pattern: "zp.scau.edu.cn / hr2.scau.edu.cn", reason: "登录墙（招聘系统、人力资源管理系统，第 11.2 节业务系统）"}
+  - {url_or_pattern: "vpn.scau.edu.cn / lib-scau-edu-cn-s.vpn.scau.edu.cn:443", reason: "登录墙（校园 VPN 与图书馆校外访问，第 11.2 节业务系统）"}
+  - {url_or_pattern: "pay.scau.edu.cn / clpt.scau.edu.cn", reason: "登录墙（统一支付、智慧差旅，第 11.2 节业务系统）"}
+  - {url_or_pattern: "hndj.scau.edu.cn / lxyz.scau.edu.cn", reason: "登录墙（智慧党建、两学一做专题，第 11.2 节业务系统）"}
+  - {url_or_pattern: "jxpj.scau.edu.cn", reason: "登录墙（教学质量管理平台，第 11.2 节业务系统）"}
+  - {url_or_pattern: "lqtz.scau.edu.cn", reason: "登录墙（录取查询，第 11.2 节业务系统；已列入 admissions 但预期需查询凭据）"}
+  - {url_or_pattern: "qgzx.scau.edu.cn / szzx.scau.edu.cn", reason: "登录墙（勤工助学、大学生思政在线，第 11.2 节业务系统类子域）"}
+  - {url_or_pattern: "shfw.scau.edu.cn/login", reason: "登录墙（社会服务管理系统，第 11.2 节业务系统）"}
+  - {url_or_pattern: "labsra.scau.edu.cn / xnfzsyjx.scau.edu.cn", reason: "登录墙（实验室安全考试、虚拟仿真实验平台，第 11.2 节业务系统）"}
+  - {url_or_pattern: "emrs.scau.edu.cn / mis2.scau.edu.cn / asset.scau.edu.cn / 2fasset.scau.edu.cn", reason: "登录墙（仪器报修、大仪共享、固定资产管理，第 11.2 节业务系统）"}
+  - {url_or_pattern: "skhysjy.scau.edu.cn", reason: "登录墙（生命科学学院会议室预约，第 11.2 节业务系统）"}
+  - {url_or_pattern: "tybtcxt.scau.edu.cn / tybyldpage.scau.edu.cn", reason: "登录墙（体质测试、阳光体育，第 11.2 节业务系统）"}
+  - {url_or_pattern: "acm.scau.edu.cn", reason: "登录墙（程序设计竞赛系统，第 11.2 节业务系统，非生物专业必需）"}
+  - {url_or_pattern: "yjsglxt.scau.edu.cn", reason: "登录墙（研究生招生目录系统，第 11.2 节业务系统）"}
+  - {url_or_pattern: "voyage001.scau.edu.cn", reason: "登录墙/第三方（华农小研 AI 问答节点，第 11.2 节）"}
+  - {url_or_pattern: "202.116.160.8 / 202.116.160.105 / 202.116.162.70 / 202.116.162.93 / 202.116.160.44:8004 / 222.201.224.99:8080 / 222.201.225.29 / 222.201.226.48 / 222.201.228.129 / 210.76.83.199", reason: "登录墙（第 11.2 节 IP 直连业务系统：旧后台、财务、科研、心理、林学就业、慧审通、学业导师、内控、智慧实验室、党员管理；但 202.116.160.44:8004 林学就业网已按原文列入 career）"}
+  - {url_or_pattern: "*.course.scau.edu.cn", reason: "课程/教学资源集群，第 11.2 节列为业务系统类"}
+  - {url_or_pattern: "https://jyzx.scau.edu.cn/module/**", reason: "第三方平台（云研科技 bysjy.com.cn），非 Webplus list.htm 形态，需按 ?type_id=&menu_id= 参数抓取"}
+  - {url_or_pattern: "https://scau.at0086.cn/student", reason: "第三方平台（留学生报名系统）"}
+  - {url_or_pattern: "https://hnnydx.jxjy.chaoxing.com/login 等", reason: "第三方平台（继续教育超星/o-learn/泛雅查重平台，第 11.3 节）"}
+  - {url_or_pattern: "https://gsscau.yuketang.cn/pro/portal/home/", reason: "第三方平台（研究生在线课程，第 11.3 节）"}
+  - {url_or_pattern: "https://scau.libtop.com/v3/", reason: "第三方平台（图书馆实时馆情，第 11.3 节）"}
+  - {url_or_pattern: "https://gaokaobang.360eol.com/rector/2024/scau/index.html?v=102", reason: "第三方平台（360eol 招生宣传门户，第 8/11.3 节）"}
+  - {url_or_pattern: "https://www.douyin.com/user/MS4wLjABAAAAlksGVSHxxL-Z2vHcjLDOpIYVwNvWimDzrswl36Tei8 / https://space.bilibili.com/619722846 / https://weibo.com/u/3271376974 / https://v.oeeee.com/u/10810.html / https://mp.weixin.qq.com/", reason: "第三方平台（社交与融媒体矩阵，第 1.7 节）"}
+  - {url_or_pattern: "https://www.720yun.com/vr/1d5jepwOOv9 / https://07fhkv3t4.720think.com/t/07fhkv3t4?def_sid=1153627", reason: "第三方平台（VR 展馆，第 1.5 节）"}
+  - {url_or_pattern: "https://5wmhafdxzfc4o.ok.kimi.link/", reason: "第三方平台（兽医学院学科大模型链接）"}
+  - {url_or_pattern: "https://www.ucd.ie/gdic/", reason: "第三方平台（都柏林大学侧官方页）"}
+  - {url_or_pattern: "https://www.cnki.net/ 等数据库", reason: "第三方平台（图书馆电子资源，第 11.3 节）"}
+  - {url_or_pattern: "https://tuan.12355.net/bg/index.html / https://www.12355.net/ / https://www.gdzyz.cn/ / https://www.izhanchi.com/", reason: "第三方平台（团委校外业务平台，第 7.3 节）"}
+  - {url_or_pattern: "http://xl.psyedu.cn/scau", reason: "第三方平台（心理健康教育管理平台，第 3.5 节）"}
+  - {url_or_pattern: "https://www.ccdi.gov.cn/ 与 https://www.gdjct.gd.gov.cn/ 系列外链", reason: "第三方平台（校纪委栏目外链，第 7.1 节）"}
+  - {url_or_pattern: "https://www.scau.edu.cn/2023/1007/c6617a357265/page.htm 等 /年/月日/cNaN aNaN/page.htm 单篇", reason: "非列表页（正文页，第 1.5/1.6/3.x 节多处）"}
+  - {url_or_pattern: "https://www.scau.edu.cn/main.htm、/_t104/main.htm、/_t104/main.psp、/_s3/17935/list.psp", reason: "非列表页（首页与旧版整站入口）"}
+  - {url_or_pattern: "https://kyy.scau.edu.cn/2025/0214/c11891a399113/page.htm 等 9 个全国重点实验室单篇", reason: "非列表页（第 6.1 节，正文页）"}
+  - {url_or_pattern: "https://kyy.scau.edu.cn/ttc/2026/0320/c14657a429721/page.htm", reason: "非列表页（专利库单页表格）"}
+  - {url_or_pattern: "https://vet.scau.edu.cn/2020/0516/c803a229476/page.htm", reason: "非列表页（兽医学院联系我们单篇）"}
+  - {url_or_pattern: "http://xg.scau.edu.cn/2020/0811/c11465a246963/page.htm", reason: "非列表页（学工部部长信箱单页）"}
+  - {url_or_pattern: "http://xtw.scau.edu.cn/2023/0222/c16397a336610/page.htm", reason: "非列表页（团委联系我们单篇）"}
+  - {url_or_pattern: "https://cxcyxy.scau.edu.cn/2025/0319/c18899a402874/page.htm", reason: "非列表页（校科联单篇）"}
+  - {url_or_pattern: "https://lib.scau.edu.cn/2021/1228/c14631a301389/page.htm 等 FAQ 单篇", reason: "非列表页（图书馆 FAQ 单篇，共 4 条）"}
+  - {url_or_pattern: "https://hnxb.scau.edu.cn/#bid=357", reason: "非列表页（电子校报按期号访问的锚点形式）"}
+  - {url_or_pattern: "https://tyb.scau.edu.cn/xwhd/list.htm、https://tyb.scau.edu.cn/jctyr/list.htm", reason: "已失效/空栏目（第 13.6 节实测）"}
+  - {url_or_pattern: "https://art.scau.edu.cn/2530/list.htm", reason: "已失效/空栏目（第 13.6 节实测）"}
+  - {url_or_pattern: "https://cie.scau.edu.cn/zsjz/list.htm", reason: "已失效/空栏目（第 13.6 节实测）"}
+  - {url_or_pattern: "https://dongke.scau.edu.cn/tzgg/list.htm", reason: "已失效/空栏目（第 13.6 节实测；博士后通知公告空栏目）"}
+  - {url_or_pattern: "https://dongke.scau.edu.cn/dkzsw/", reason: "已失效（302 回主站，第 2.7 节）"}
+  - {url_or_pattern: "https://cfb.scau.edu.cn/xsjz/list.htm、https://cfb.scau.edu.cn/kyjz/list.htm", reason: "已失效/空栏目（第 13.6 节实测；已在 colleges_bio 标注空栏目）"}
+  - {url_or_pattern: "https://mkszyxy.scau.edu.cn/pxdt/list.htm", reason: "已失效/空栏目（第 13.6 节实测）"}
+  - {url_or_pattern: "https://rw.scau.edu.cn/3693/list.htm、https://rw.scau.edu.cn/gs/list.htm", reason: "已失效/空栏目（第 13.6 节实测）"}
+  - {url_or_pattern: "https://ggglxy.scau.edu.cn/xsdt/list.htm", reason: "已失效（内容止于 2020，第 13.6 节实测）"}
+  - {url_or_pattern: "https://life.scau.edu.cn/life_en/", reason: "已失效（重定向回主站，❌）"}
+  - {url_or_pattern: "https://gcxy.scau.edu.cn/gcxyen/", reason: "已失效（重定向回主站，❌）"}
+  - {url_or_pattern: "https://art.scau.edu.cn/arten/", reason: "已失效（重定向回主站，❌）"}
+  - {url_or_pattern: "https://zgs.scau.edu.cn/xwzx/、/gsdt/、/tzgg/、/djgz/", reason: "已失效（重定向环，无法抓取，第 7.4 节）"}
+  - {url_or_pattern: "https://jiwei.scau.edu.cn/_t181/main.htm、http://jiwei.scau.edu.cn/list.htm", reason: "已失效（重定向环，第 7.1 节）"}
+  - {url_or_pattern: "1.scau.edu.cn / 123.scau.edu.cn / 2foa.scau.edu.cn / bsd1.scau.edu.cn", reason: "疑似占位（解析至 1.1.1.1，非有效站点，第 11.4 节）"}

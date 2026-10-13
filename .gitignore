@@ -1,0 +1,24 @@
+# 密钥
+.env
+
+# 抓取数据（含校内语料，指南 §10.7 要求数据本地化，不入库）
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 导出的问答结果
+out/
+*.answer.json

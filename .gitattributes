@@ -1,0 +1,13 @@
+# 仓库内统一按 LF 存储，避免跨平台整文件 diff
+* text=auto
+
+# Windows 批处理必须用 CRLF，否则 cmd.exe 解析 goto/label 会出错
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制
+*.db binary
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.pdf binary
