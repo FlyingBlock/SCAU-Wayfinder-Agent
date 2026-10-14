@@ -1,9 +1,18 @@
 """绩点 / 德育 / 综测计算器的 Web 界面。
 
-和 `harness/web.py` 是同一套做法：零依赖、前端内嵌、无构建步骤。放在单独文件里
-是为了别把爬虫那套界面撑爆。
+和 `harness/web.py` 是同一套做法：零依赖、前端内嵌、无构建步骤。
+本模块不再自己产出整页 HTML，而是把计算器拆成几块交给
+`harness/app.py` 装进单页应用的外壳里（左侧栏由 `harness/appshell.py` 提供）：
 
-页面结构（三个 Tab）：
+- `CALC_PAGE`         完整的计算器页面文本（保留一份，改标记只改这里）
+- `CALC_DOCS_PAGE`    完整的口径说明页面文本
+- `calc_view_html()`  计算器视图：① 我的成绩 ② 门槛对照 ③ 活动篮 ④ 计算口径
+                      四个子页并排放在同一个视图里，由侧栏切换（只切显隐，状态不丢）
+- `calc_view_js()`    计算器脚本，整体包在 IIFE 里，只对外暴露 `window.__calc.boot()`
+                      —— 页面打开时停在对话页，计算器数据等第一次切过去才加载
+- `docs_view_html()`  原 `/calc-docs` 的正文，挂在「④ 计算口径」下面
+
+四个子页分别回答：
 
 1. **我的成绩** —— 选专业自动导入课程，按学期录成绩；再填四六级、体测、
    志愿时长这些量化指标。
@@ -12,6 +21,7 @@
 3. **活动篮** —— 具体赛事卡片（《学生竞赛奖励办法》名录里的 110 个赛事，带 T/A/B 级别与
    加分档位）+ 通用加分项；勾进篮子后右侧实时累加，并可用「🔄 刷新联网」对账官网名录、
    发现最近还有哪些赛事在报名。
+4. **计算口径** —— 折算表、综测分项与上限、加分口径、数据出处。
 
 所有计算都在 `harness.calc` 里做，前端只负责渲染，保证和 CLI 口径一致。
 """
@@ -28,23 +38,10 @@ CALC_PAGE = r"""<!DOCTYPE html>
         --acc:#0969da;--ok:#1a7f37;--warn:#9a6700;--err:#cf222e;--okbg:#eaf7ee;
         --warnbg:#fdf6e3;--errbg:#fdeaea;--pri:#8250df}
   *{box-sizing:border-box}
-  body{margin:0;font:14.5px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
-       color:var(--fg);background:var(--soft)}
-  header{background:var(--bg);border-bottom:1px solid var(--bd);padding:12px 20px;
-         display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
   header h1{font-size:16.5px;margin:0;font-weight:650}
-  nav a{font-size:13px;color:var(--acc);text-decoration:none;border:1px solid var(--bd);
-        border-radius:99px;padding:3px 11px;background:var(--bg)}
-  nav a:hover{background:var(--soft)}
-  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;font-size:12.5px}
-  .pill{background:var(--soft);border:1px solid var(--bd);border-radius:99px;padding:3px 11px;color:var(--mut)}
-  .pill.ok{color:var(--ok);border-color:#b7e0c2;background:var(--okbg)}
-  .pill.warn{color:var(--warn);border-color:#eeddaa;background:var(--warnbg)}
-  .pill.err{color:var(--err);border-color:#f3c0c0;background:var(--errbg)}
-  .pill.pri{color:var(--pri);border-color:#d8c7f5;background:#f6f0ff}
-  .tabs{display:flex;gap:6px;padding:0 20px;background:var(--bg);border-bottom:1px solid var(--bd);
-        position:sticky;top:56px;z-index:19;flex-wrap:wrap}
-  .tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;
+  .tabs{display:flex;gap:6px;padding:8px 16px;background:var(--bg);border:1px solid var(--bd);
+        border-radius:10px;margin-bottom:14px;flex-wrap:wrap}
+  .tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:7px 13px;
                font:inherit;font-weight:600;color:var(--mut);cursor:pointer}
   .tabs button.on{color:var(--acc);border-bottom-color:var(--acc)}
   main{padding:18px 20px;max-width:1500px;margin:0 auto}
@@ -101,7 +98,7 @@ CALC_PAGE = r"""<!DOCTYPE html>
   .ok-line{font-size:12.5px;color:var(--ok)}
   .err-line{font-size:12.5px;color:var(--err)}
   .diffitem{font-size:12.5px;margin-top:4px}
-  .basket{position:sticky;top:110px}
+  .basket{position:sticky;top:16px}
   .bl{display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:13px}
   .bl .n{flex:1;min-width:0}
   .bl .n b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -126,27 +123,17 @@ CALC_PAGE = r"""<!DOCTYPE html>
 </style>
 </head>
 <body>
-<header>
-  <h1>📊 SCAU 绩点 / 德育 / 综测计算器</h1>
-  <nav>
-    <a href="/">← 回到信息检索</a>
-    <a href="/calc-docs" target="_blank">数据口径说明</a>
-    <!-- 计算器不调模型，但问答复用的是同一份 LLM 配置，这里给个入口指到首页的设置弹窗 -->
-    <a href="/?settings=1" title="OpenAI 兼容端点：base URL / 模型名 / API key">⚙️ 模型设置</a>
-  </nav>
-  <div class="pills" id="pills"><span class="pill">加载中…</span></div>
-</header>
-
-<div class="tabs">
-  <button data-tab="profile" class="on">① 我的成绩</button>
-  <button data-tab="goals">② 门槛对照</button>
-  <button data-tab="acts">③ 活动篮</button>
-  <button data-tab="rules">④ 计算口径</button>
-</div>
-
-<main>
-<div class="wrap">
-  <div id="left">
+<section class="view" id="view-calc">
+  <div class="vwrap">
+    <div class="tabs">
+      <button data-tab="profile" class="on">① 我的成绩</button>
+      <button data-tab="goals">② 门槛对照</button>
+      <button data-tab="acts">③ 活动篮</button>
+      <button data-tab="rules">④ 计算口径</button>
+    </div>
+    <div class="pills" id="pill-calc"><span class="pill">加载中…</span></div>
+    <div class="wrap">
+      <div id="left">
 
     <!-- ================= ① 我的成绩 ================= -->
     <section id="tab-profile">
@@ -259,8 +246,9 @@ CALC_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
   </aside>
-</div>
-</main>
+    </div>
+  </div>
+</section>
 
 <script>
 /* ============================== 基础设施 ============================== */
@@ -322,7 +310,7 @@ async function runEval(){
     LAST = d;
     renderLive(d); renderBasket(d); renderGoals(d); renderScoreProgress(d);
     const warn = (d.warnings||[]).length;
-    $('#pills').innerHTML =
+    $('#pill-calc').innerHTML =
       `<span class="pill">${esc(MAJOR?MAJOR.name:'未选专业')}</span>` +
       `<span class="pill ${d.gpa.gpa>0?'ok':''}">绩点 ${n2(d.gpa.gpa,3)}</span>` +
       (Math.abs((d.gpa.gpa_no_retake||0)-(d.gpa.gpa||0))>1e-9
@@ -331,7 +319,7 @@ async function runEval(){
       `<span class="pill">已获 ${n2(d.gpa.credits_earned,1)}/${n2(d.gpa.credits_total,1)} 学分</span>` +
       (warn?`<span class="pill warn">${warn} 条数据提示</span>`:'');
   }catch(e){
-    $('#pills').innerHTML = `<span class="pill err">计算失败：${esc(e.message)}</span>`;
+    $('#pill-calc').innerHTML = `<span class="pill err">计算失败：${esc(e.message)}</span>`;
   }finally{
     evaluating = false;
     if(pendingEval){ pendingEval = false; setTimeout(runEval, 30); }
@@ -1129,7 +1117,7 @@ async function boot(){
   try{
     CAT = await api('/api/calc/catalog');
   }catch(e){
-    $('#pills').innerHTML = `<span class="pill err">无法加载计算器数据：${esc(e.message)}<br>请确认 calcdata/ 下有 rules/majors/goals/activities.json</span>`;
+    $('#pill-calc').innerHTML = `<span class="pill err">无法加载计算器数据：${esc(e.message)}<br>请确认 calcdata/ 下有 rules/majors/goals/activities.json</span>`;
     return;
   }
   buildMajorSelect();
@@ -1144,7 +1132,7 @@ async function boot(){
   termButtons();
   await runEval();
 }
-boot();
+/* 启动交给外壳：切到计算器视图时调用 window.__calc.boot()（见 calc_view_js） */
 </script>
 </body>
 </html>
@@ -1162,7 +1150,7 @@ CALC_DOCS_PAGE = r"""<!DOCTYPE html>
         gap:14px;align-items:center;position:sticky;top:0}
  header h1{font-size:16.5px;margin:0}
  header a{font-size:13px;color:#0969da;text-decoration:none;border:1px solid #d0d7de;
-          border-radius:99px;padding:3px 11px;background:#fff}
+           border-radius:99px;padding:3px 11px;background:#fff}
  main{max-width:900px;margin:0 auto;padding:20px}
  .card{background:#fff;border:1px solid #d0d7de;border-radius:10px;padding:18px;margin-bottom:14px}
  h2{font-size:15px;margin:0 0 10px}
@@ -1175,8 +1163,8 @@ CALC_DOCS_PAGE = r"""<!DOCTYPE html>
  th{background:#f6f8fa;font-size:12.5px;color:#656d76}
  .warn{background:#fdf6e3;border:1px solid #eeddaa;border-radius:8px;padding:11px;color:#9a6700}
 </style></head><body>
-<header><h1>📐 计算器数据口径说明</h1><a href="/calc">← 回到计算器</a><a href="/">信息检索</a></header>
-<main>
+<section class="view" id="view-docs">
+  <div class="vwrap">
 <div class="card">
   <h2>为什么要写这一页</h2>
   <p>这个计算器的每一个数字都来自 <code>calcdata/</code> 下的五个 JSON 文件，代码里<b>不含任何学校特有的数字</b>。
@@ -1342,5 +1330,114 @@ CALC_DOCS_PAGE = r"""<!DOCTYPE html>
   </ol>
   <p>改完刷新页面即可，无需改任何 Python 代码。</p>
 </div>
-</main></body></html>
+  </div>
+</section>
+</body></html>
 """
+
+
+# --------------------------------------------------------------------------- #
+# 视图装配：把上面两段原始页面文本切出来，交给 harness/app.py 装进单页外壳。
+#
+# 保留整页文本（CALC_PAGE / CALC_DOCS_PAGE）是为了「改标记只改一份」：
+# 下面几个函数都按标记切片，不再抄第二遍 HTML。
+# --------------------------------------------------------------------------- #
+import re
+
+
+def _slice(text: str, start: str, end: str) -> str:
+    """取出 start 与 end 之间的内容（取第一处 start 之后的第一处 end）。"""
+    i = text.index(start) + len(start)
+    j = text.index(end, i)
+    return text[i:j]
+
+
+def _scope_css(css: str, scope: str) -> str:
+    """把一段 CSS 的每条规则限定在 `scope` 里（body/main 这类页面级规则丢掉）。
+
+    口径说明那段是**内容**样式，不限定作用域的话 `h2`/`table` 会把整个页面改掉。
+    """
+    out: list[str] = []
+    for block in re.split(r"(?<=\})\s*", css):
+        if "{" not in block:
+            continue
+        sel, _, rest = block.partition("{")
+        sel = sel.strip()
+        if not sel or sel in ("body", "main", "html"):
+            continue
+        scoped = ", ".join(
+            (f"{scope} {one.strip()}" if one.strip() not in ("html", "body") else scope)
+            for one in sel.split(",") if one.strip()
+        )
+        out.append(scoped + "{" + rest.rstrip())
+    return "\n".join(out)
+
+
+# 计算器视图：标记（四个子页 + 右侧实时结果）与脚本，都从 CALC_PAGE 里切出来。
+CALC_VIEW_HTML = _slice(CALC_PAGE, '<section class="view" id="view-calc">',
+                        "</section>\n\n<script>")
+CALC_VIEW_HTML = '<section class="view" id="view-calc">' + CALC_VIEW_HTML + "</section>"
+CALC_VIEW_JS = _slice(CALC_PAGE, "<script>", "/* 启动交给外壳")
+
+# 计算器样式：CALC_PAGE 的 <style> 段（只保留计算器自己的规则，页面级规则已在原文里删掉）
+CALC_VIEW_CSS = _slice(CALC_PAGE, "<style>", "</style>")
+
+# 口径说明视图：原 /calc-docs 的正文，样式限定在 #view-docs 里避免影响其它视图。
+CALC_VIEW_DOCS = _slice(CALC_DOCS_PAGE, '<section class="view" id="view-docs">', "</section>\n")
+CALC_VIEW_DOCS = '<section class="view" id="view-docs">' + CALC_VIEW_DOCS + "</section>"
+CALC_DOCS_STYLE = _scope_css(_slice(CALC_DOCS_PAGE, "<style>", "</style>"), "#view-docs")
+
+
+def calc_view_html() -> str:
+    """计算器视图（四个子页 + 右侧实时结果），塞进外壳的 #appmain 里。"""
+    return "\n  " + CALC_VIEW_HTML + "\n"
+
+
+def calc_view_js() -> str:
+    """计算器脚本。
+
+    整体包在 IIFE 里：这一份和外壳、对话页的脚本最终会拼进**同一个** `<script>`，
+    里面的 `$` / `esc` / `state` / `runEval` 这些名字不该泄到全局去。
+    只暴露 `window.__calc.boot()` —— 页面打开时停在对话视图，计算器数据等
+    第一次切过去才加载。
+    """
+    return (
+        "/* ===== 绩点 / 综测计算器（IIFE：只暴露 __calc.boot）===== */\n"
+        "(function(){\n"
+        + CALC_VIEW_JS.strip()
+        + "\n\n"
+        "window.__calc = {boot, state, renderCourses, renderActivities, renderGoals,\n"
+        "                 renderLive, renderBasket, renderRules, renderMetrics,\n"
+        "                 renderCompetitionHead, refreshOnline, setMajor, fillDemo,\n"
+        "                 runEval, catalog:()=>CAT, last:()=>LAST, major:()=>MAJOR,\n"
+        "                 setTerm:(t)=>{ TERM_FILTER = t; },\n"
+        "                 /* 对话页的「加入活动篮」按钮走这两个口子：\n"
+        "                    先把答案卡片里的活动写进同一份 localStorage 状态，\n"
+        "                    再让计算器（若已加载）原地重算，不用刷新页面。 */\n"
+        "                 inBasket:(id)=>state.basket.some(b=>b.activity_id===id),\n"
+        "                 addToBasket:(item)=>{\n"
+        "                   const id = item && item.activity_id; if(!id) return false;\n"
+        "                   if(state.basket.some(b=>b.activity_id===id)) return false;\n"
+        "                   state.basket.push({activity_id:id,\n"
+        "                     achieve:(item && item.achieve)||'',\n"
+        "                     quantity:Math.max(1, parseInt((item && item.quantity)||1, 10) || 1),\n"
+        "                     name:(item && item.name)||''});\n"
+        "                   save();\n"
+        "                   if(CAT){ try{ renderActivities(); }catch(e){}\n"
+        "                            scheduleEval(30); }\n"
+        "                   return true;\n"
+        "                 }};\n"
+        "})();\n"
+    )
+
+
+def docs_view_html() -> str:
+    """数据口径说明（原 `/calc-docs` 的正文），侧栏「④ 计算口径」的补充。"""
+    return (
+        "\n" + CALC_VIEW_DOCS.replace(
+            '<section class="view" id="view-docs">',
+            '<section class="view" id="view-docs">\n    <style>\n'
+            + CALC_DOCS_STYLE + '\n    </style>',
+            1,
+        ) + "\n"
+    )

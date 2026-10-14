@@ -3,10 +3,14 @@
 为什么不用 FastAPI：本机沙箱装不了包（指南 §3.4），而 http.server 足够
 支撑单用户使用，且零依赖。前端是内嵌的 HTML 页面，无构建步骤。
 
+整个界面是**一份** HTML（`harness.app.build_page()`）：左侧栏切换视图，
+对话页、绩点计算器及其四个子页、数据口径说明都在同一页里，切换不刷新、不丢状态。
+
 路由：
-  GET  /                    首页（内嵌 HTML/JS，含「⚙️ 设置」弹窗）
-  GET  /calc                绩点/综测计算器页面
-  GET  /calc-docs           计算器数据口径说明
+  GET  /                    单页应用（默认停在「主页对话」）
+  GET  /calc                同上，deep-link 到计算器（① 我的成绩）
+  GET  /calc/<子页>         同上，子页 = scores|goals|acts|rules
+  GET  /calc-docs           同上，deep-link 到「④ 计算口径」
   GET  /api/status          库状态 + LLM/公网搜索配置灯
   GET  /api/search?q=&k=    纯检索（不花 token）
   GET  /api/article?id=     读某篇正文
@@ -14,6 +18,13 @@
   GET  /api/settings/llm    读当前 LLM 配置（key 只回显掩码）
   POST /api/settings/llm    保存 base URL / 模型名 / API key（可先真实调用验证）
   POST /api/settings/llm/test 只测试连通性，不保存
+  GET  /api/settings/ocr    读 OCR / 附件配置（key 只回显掩码）
+  POST /api/settings/ocr    保存 OCR 配置（可先真实调用验证）
+  GET  /api/settings/auth   读登录配置：会话状态 + 账号（打码）+ 自动登录开关
+  POST /api/settings/auth   保存账号密码与自动登录开关，并真的登一次验证
+  POST /api/settings/auth/captcha  OCR 认不出验证码时，用人工填的验证码续登一次
+  POST /api/settings/auth/clear    清除保存的账号密码
+  POST /api/settings/auth/logout   清掉当前会话 cookie（凭据保留）
   GET  /api/calc/catalog    计算器全部静态数据（专业/课程/规则/门槛/活动）
   POST /api/calc/evaluate   提交成绩单 + 活动篮，返回完整计算结果
   GET  /api/calc/target     反推：达到目标绩点时剩余课程需要的分数
@@ -21,21 +32,26 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import sys
 import threading
 import time
 import urllib.parse
 import webbrowser
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .agent import Agent
-from .calcpages import CALC_DOCS_PAGE, CALC_PAGE
+from .app import build_page
+from .calcpages import CALC_DOCS_PAGE, CALC_PAGE          # noqa: F401  兼容旧引用
 from .config import (
+    AUTH_ENV_KEYS,
     ENV_FILE,
     LLM_ENV_KEYS,
     LLM_LEGACY_KEYS,
     LLM_PRESETS,
+    OCR_ENV_KEYS,
     SETTINGS,
     LLMSettings,
     SearchSettings,
@@ -46,374 +62,56 @@ from .llm import LLM
 from .store import Store
 from .websearch import WebSearcher
 
-PAGE = r"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SCAU 学生发展信息 Harness</title>
-<style>
-  :root{--fg:#1f2328;--mut:#656d76;--bd:#d0d7de;--bg:#ffffff;--soft:#f6f8fa;
-        --acc:#0969da;--ok:#1a7f37;--warn:#9a6700;--err:#cf222e}
-  *{box-sizing:border-box}
-  body{margin:0;font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--fg);background:var(--soft)}
-  header{background:var(--bg);border-bottom:1px solid var(--bd);padding:14px 22px;display:flex;
-         align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
-  header h1{font-size:17px;margin:0;font-weight:650}
-  nav.nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  nav.nav a,nav.nav button{font-size:13px;color:var(--acc);text-decoration:none;border:1px solid var(--bd);
-            border-radius:99px;padding:3px 11px;background:var(--bg);font-weight:500;cursor:pointer}
-  nav.nav a:hover,nav.nav button:hover{background:var(--soft)}
-  nav.nav button.set{border-color:#b6cffa;background:#eaf1fd}
-  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;font-size:12.5px}
-  .pill{background:var(--soft);border:1px solid var(--bd);border-radius:99px;padding:3px 11px;color:var(--mut)}
-  .pill.ok{color:var(--ok);border-color:#b7e0c2;background:#eaf7ee}
-  .pill.warn{color:var(--warn);border-color:#eeddaa;background:#fdf6e3}
-  .pill.err{color:var(--err);border-color:#f3c0c0;background:#fdeaea}
-  main{max-width:960px;margin:0 auto;padding:22px}
-  .card{background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:18px;margin-bottom:16px}
-  textarea{width:100%;min-height:74px;padding:11px;border:1px solid var(--bd);border-radius:8px;
-           font:inherit;resize:vertical}
-  .row{display:flex;gap:10px;align-items:center;margin-top:11px;flex-wrap:wrap}
-  button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 18px;font:inherit;
-         font-weight:600;cursor:pointer}
-  button.ghost{background:var(--bg);color:var(--fg);border:1px solid var(--bd);font-weight:500}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .ex{font-size:13px;color:var(--mut);cursor:pointer;text-decoration:underline dotted}
-  .ex:hover{color:var(--acc)}
-  #trace{font:12.5px/1.7 ui-monospace,Consolas,monospace;color:var(--mut);white-space:pre-wrap;
-         background:var(--soft);border:1px solid var(--bd);border-radius:8px;padding:11px;
-         max-height:230px;overflow:auto;margin-top:14px}
-  #answer{white-space:pre-wrap;word-wrap:break-word;margin-top:6px}
-  #answer h2,#answer h3{font-size:16px;margin:20px 0 7px;padding-bottom:5px;border-bottom:1px solid var(--bd)}
-  #answer h2:first-child{margin-top:0}
-  #answer table{border-collapse:collapse;margin:10px 0;font-size:14px;display:block;overflow-x:auto}
-  #answer th,#answer td{border:1px solid var(--bd);padding:6px 10px;text-align:left}
-  #answer th{background:var(--soft)}
-  #answer code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:13px}
-  #answer a{color:var(--acc)}
-  #refs{margin-top:18px;padding-top:14px;border-top:1px solid var(--bd);font-size:13px;color:var(--mut)}
-  #refs div{margin:5px 0;word-break:break-all}
-  .hit{border-top:1px solid var(--bd);padding:11px 0}
-  .hit:first-child{border-top:0}
-  .hit .t{font-weight:600}
-  .hit .m{font-size:12.5px;color:var(--mut);margin:3px 0}
-  .hit .s{font-size:13.5px;color:#424a53}
-  details summary{cursor:pointer;font-weight:600;color:var(--mut)}
-  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--bd);
-        border-top-color:var(--acc);border-radius:50%;animation:r .8s linear infinite;vertical-align:-1px}
-  @keyframes r{to{transform:rotate(360deg)}}
-  /* ---- 设置弹窗 ---- */
-  .hide{display:none!important}
-  .bd{position:fixed;inset:0;background:rgba(31,35,40,.45);z-index:50;overflow:auto;
-      padding:52px 16px;display:flex;justify-content:center;align-items:flex-start}
-  .modal{background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:20px 22px;
-         width:100%;max-width:580px;box-shadow:0 14px 38px rgba(31,35,40,.22)}
-  .modal h2{font-size:16px;margin:0 0 6px;font-weight:650}
-  .modal .fld{margin-top:13px}
-  .modal .fld label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:4px}
-  .modal input{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;font:inherit}
-  .modal input:focus{outline:2px solid #b6cffa;outline-offset:-1px;border-color:var(--acc)}
-  .presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-  .presets button{background:var(--soft);color:var(--fg);border:1px solid var(--bd);
-                  border-radius:99px;padding:3px 10px;font-size:12.5px;font-weight:500}
-  .msg{font-size:13px;margin-top:13px;padding:9px 11px;border-radius:8px;
-       border:1px solid var(--bd);background:var(--soft);word-break:break-word}
-  .msg.ok{color:var(--ok);border-color:#b7e0c2;background:#eaf7ee}
-  .msg.err{color:var(--err);border-color:#f3c0c0;background:#fdeaea}
-  .msg.warn{color:var(--warn);border-color:#eeddaa;background:#fdf6e3}
-  .msg .lnk{color:var(--acc);cursor:pointer;text-decoration:underline dotted}
-  .small{font-size:12.5px;color:var(--mut)}
-  .mono{font-family:ui-monospace,Consolas,monospace}
-</style>
-</head>
-<body>
-<header>
-  <h1>🌾 SCAU 学生发展信息 Harness</h1>
-  <nav class="nav">
-    <a href="/calc">📊 绩点 / 综测计算器</a>
-    <button type="button" class="set" id="settings-btn" title="OpenAI 兼容端点：base URL / 模型名 / API key">⚙️ 设置</button>
-  </nav>
-  <div class="pills" id="pills"><span class="pill">加载中…</span></div>
-</header>
-<main>
-  <div class="card">
-    <textarea id="q" placeholder="例：生物专业可以参加什么竞赛？走什么发展路线？"></textarea>
-    <div class="row">
-      <button id="go">提问</button>
-      <button class="ghost" id="find">只检索不生成</button>
-      <label style="font-size:13.5px;color:var(--mut)">补检索轮数
-        <select id="rounds"><option>1</option><option selected>2</option><option>3</option></select>
-      </label>
-      <label style="font-size:13.5px;color:var(--mut)">
-        <input type="checkbox" id="dry"> 仅检索验证（不调用 LLM，不花 token）
-      </label>
-      <span style="margin-left:auto"></span>
-      <span class="ex" data-q="生物专业可以参加什么竞赛？走什么发展路线？">生物专业竞赛与发展路线</span>
-      <span class="ex" data-q="生物化学实验技能大赛怎么报名？往年什么时候办？">生化大赛怎么报名</span>
-      <span class="ex" data-q="生命科学学院保研条件和时间线是什么？">保研条件与时间线</span>
-      <span class="ex" data-q="大创项目什么时候申报？需要什么条件？">大创申报</span>
-      <span class="ex" data-q="生物专业毕业后主要去哪就业？">生物就业去向</span>
-    </div>
-    <div id="trace" style="display:none"></div>
-  </div>
-  <div class="card" id="out" style="display:none">
-    <div id="answer"></div>
-    <div id="refs"></div>
-  </div>
-</main>
 
-<!-- ===================== ⚙️ LLM 设置 ===================== -->
-<div class="bd hide" id="set-bd">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="set-title">
-    <h2 id="set-title">⚙️ 模型设置</h2>
-    <div class="small">任何 <b>OpenAI 兼容</b>端点都能接：填 base URL、模型名、API key。
-      保存后立即生效，同时写入仓库根的 <span class="mono">.env</span>（下次启动仍然有效）。</div>
+@lru_cache(maxsize=1)
+def page_html() -> str:
+    """单页应用 HTML（拼一次就缓存，页面几万字，不必每次请求重拼）。"""
+    return build_page()
 
-    <div class="presets" id="set-presets"></div>
 
-    <div class="fld">
-      <label for="set-base">Base URL（OpenAI 兼容端点，不含 /chat/completions）</label>
-      <input id="set-base" type="text" spellcheck="false" autocomplete="off"
-             placeholder="https://api.deepseek.com">
-    </div>
-    <div class="fld">
-      <label for="set-model">模型名称</label>
-      <input id="set-model" type="text" spellcheck="false" autocomplete="off"
-             placeholder="deepseek-chat">
-    </div>
-    <div class="fld">
-      <label for="set-key">API Key</label>
-      <input id="set-key" type="password" spellcheck="false" autocomplete="new-password"
-             placeholder="sk-…">
-    </div>
+# --------------------------------------------------------------------------- #
+# 「OCR 认不出验证码 → 让人照着图填一次」的待续登录。
+#
+# 验证码和 CAS 的 execution 字段都是**跟这一次 GET 的登录页绑定的**（换一次请求
+# 就换一张图），所以人工填验证码时必须复用同一个 AuthSession 与同一份表单。
+# 这里只暂存 (session, form, 账号) —— **不存密码**，密码由前端在续登时再发一次
+# （或回退到 .auth/credentials.json 里那份）。5 分钟不用就自动作废。
+# --------------------------------------------------------------------------- #
+_PENDING_LOGINS: dict[str, tuple] = {}
+_PENDING_LOCK = threading.Lock()
+_PENDING_TTL = 300
 
-    <div class="msg hide" id="set-msg"></div>
 
-    <div class="row" style="margin-top:14px">
-      <button id="set-save">保存并验证</button>
-      <button class="ghost" id="set-test">测试连接</button>
-      <button class="ghost" id="set-close">关闭</button>
-      <span class="small" id="set-file" style="margin-left:auto"></span>
-    </div>
-    <div class="small" style="margin-top:10px">
-      命令行等价写法：<span class="mono">python -m harness.cli setup-key</span>
-    </div>
-  </div>
-</div>
+def _stash_login(sess, form, user: str) -> str:
+    token = f"{int(time.time())}-{os.urandom(6).hex()}"
+    now = time.time()
+    with _PENDING_LOCK:
+        for k in [k for k, v in _PENDING_LOGINS.items() if now - v[3] > _PENDING_TTL]:
+            _PENDING_LOGINS.pop(k, None)
+        _PENDING_LOGINS[token] = (sess, form, user, now)
+    return token
 
-<script>
-const $ = s => document.querySelector(s);
-const esc = s => (s||"").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-/* 极简 markdown 渲染：标题/粗体/表格/列表/链接/引用编号 */
-function md(src){
-  const lines = (src||"").split("\n"); let out=[], i=0, tbl=[];
-  const inline = t => esc(t)
-    .replace(/\[(\d+)\]/g,'<code>[$1]</code>')
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/`([^`]+)`/g,'<code>$1</code>')
-    .replace(/(https?:\/\/[^\s<)]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
-  const flushTbl = () => {
-    if(!tbl.length) return;
-    let html='<table>';
-    tbl.forEach((r,idx)=>{
-      if(/^\s*\|?[\s:\-|]+\|?\s*$/.test(r) && idx===1) return;
-      const cells = r.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|');
-      const tag = idx===0?'th':'td';
-      html += '<tr>'+cells.map(c=>`<${tag}>${inline(c.trim())}</${tag}>`).join('')+'</tr>';
-    });
-    out.push(html+'</table>'); tbl=[];
-  };
-  while(i<lines.length){
-    const l = lines[i];
-    if(/^\s*\|.*\|\s*$/.test(l)){ tbl.push(l); i++; continue; }
-    flushTbl();
-    if(/^###\s+/.test(l)) out.push('<h3>'+inline(l.replace(/^###\s+/,''))+'</h3>');
-    else if(/^##\s+/.test(l)) out.push('<h2>'+inline(l.replace(/^##\s+/,''))+'</h2>');
-    else if(/^#\s+/.test(l)) out.push('<h2>'+inline(l.replace(/^#\s+/,''))+'</h2>');
-    else if(/^\s*[-*]\s+/.test(l)) out.push('<div style="margin:3px 0 3px 18px">• '+inline(l.replace(/^\s*[-*]\s+/,''))+'</div>');
-    else if(l.trim()==='') out.push('');
-    else out.push('<div>'+inline(l)+'</div>');
-    i++;
-  }
-  flushTbl();
-  return out.join('\n');
-}
+def _pop_login(token: str):
+    if not token:
+        return None
+    with _PENDING_LOCK:
+        entry = _PENDING_LOGINS.pop(token, None)
+    if entry is None:
+        return None
+    if time.time() - entry[3] > _PENDING_TTL:
+        return None
+    return entry[:3]
 
-async function status(){
-  try{
-    const r = await fetch('/api/status'); const d = await r.json();
-    const p=[];
-    p.push(`<span class="pill ${d.articles?'ok':''}">语料 ${d.articles} 篇 / ${d.sites} 栏目</span>`);
-    p.push(`<span class="pill llm ${d.llm_configured?'ok':'err'}" style="cursor:pointer"
-             title="点这里改 base URL / 模型名 / API key（${esc(d.llm_base_url||'')}）"
-             >LLM ${d.llm_configured?esc(d.llm_model):'未配置 ⚙️'}</span>`);
-    p.push(`<span class="pill ${d.web_search==='none'?'warn':'ok'}">公网 ${d.web_search==='none'?'已关闭':d.web_search}</span>`);
-    if(d.with_date) p.push(`<span class="pill">带日期 ${d.with_date}</span>`);
-    if(d.last_crawl) p.push(`<span class="pill">最近抓取 ${d.last_crawl}</span>`);
-    $('#pills').innerHTML = p.join('');
-    const lp=$('#pills .pill.llm'); if(lp) lp.onclick = openSettings;
-  }catch(e){ $('#pills').innerHTML = '<span class="pill err">状态读取失败</span>'; }
-}
 
-function logTrace(t){ const el=$('#trace'); el.style.display='block'; el.textContent += t+'\n'; el.scrollTop=el.scrollHeight; }
+def _ocr_on() -> bool:
+    """OCR 是否已配置（状态栏用）。单独包一层是为了不把 ocr 模块拖进导入期。"""
+    try:
+        from . import ocr as ocr_mod
 
-async function doSearch(){
-  const q=$('#q').value.trim(); if(!q) return;
-  $('#out').style.display='block'; $('#refs').innerHTML=''; $('#trace').style.display='none';
-  $('#answer').innerHTML='<span class="spin"></span> 检索中…';
-  const r = await fetch('/api/search?k=15&q='+encodeURIComponent(q));
-  const d = await r.json();
-  if(!d.hits || !d.hits.length){ $('#answer').innerHTML='没有命中。试试更短的关键词（2-6 字），或先跑抓取。'; return; }
-  $('#answer').innerHTML = `<h2>检索命中 ${d.hits.length} 条（库内 ${d.total} 篇）</h2>` +
-    d.hits.map(h=>`<div class="hit"><div class="t">${esc(h.title)}</div>
-      <div class="m">${h.pub_date||'无日期'} · ${esc(h.college||h.site_name||'-')} · <a href="${h.url}" target="_blank" rel="noopener">原文</a></div>
-      <div class="s">${esc(h.snippet)}</div></div>`).join('');
-  $('#refs').innerHTML='';
-}
-
-function ask(){
-  const q=$('#q').value.trim(); if(!q) return;
-  const rounds=$('#rounds').value;
-  const dry=$('#dry').checked ? '1':'0';
-  $('#go').disabled=true; $('#find').disabled=true;
-  $('#out').style.display='block'; $('#answer').innerHTML=''; $('#refs').innerHTML='';
-  const tr=$('#trace'); tr.style.display='block'; tr.textContent='';
-  logTrace((dry==='1'?'[仅检索验证] ':'')+'开始：'+q);
-  const es = new EventSource('/api/ask?dry='+dry+'&rounds='+rounds+'&q='+encodeURIComponent(q));
-  es.addEventListener('trace', e=>{ const d=JSON.parse(e.data); logTrace(d.text); });
-  es.addEventListener('answer', e=>{
-    const d=JSON.parse(e.data);
-    $('#answer').innerHTML = md(d.text) + (d.error?`<div style="color:var(--err);margin-top:12px">生成异常：${esc(d.error)}</div>`:'');
-    if(d.citations) $('#refs').innerHTML = '<strong>引用来源</strong><div>'+md(d.citations).replace(/\n/g,'')+'</div>';
-    if(d.usage) logTrace(d.usage);
-  });
-  es.addEventListener('done', ()=>{ es.close(); $('#go').disabled=false; $('#find').disabled=false; status(); });
-  es.onerror = ()=>{ es.close(); $('#go').disabled=false; $('#find').disabled=false; logTrace('连接中断'); };
-}
-
-document.querySelectorAll('.ex').forEach(el=>el.onclick=()=>{ $('#q').value=el.dataset.q; });
-$('#go').onclick = ask;
-$('#find').onclick = doSearch;
-$('#q').addEventListener('keydown', e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)) ask(); });
-
-/* ===================== ⚙️ 设置：OpenAI 兼容端点 ===================== */
-function setMsg(html, kind){
-  const el=$('#set-msg');
-  if(!html){ el.className='msg hide'; el.innerHTML=''; return; }
-  el.className='msg '+(kind||''); el.innerHTML=html;
-}
-function setBusy(on, what){
-  $('#set-save').disabled=on; $('#set-test').disabled=on;
-  if(on) setMsg('<span class="spin"></span> '+esc(what), '');
-}
-function openSettings(){
-  $('#set-bd').classList.remove('hide');
-  setMsg('');
-  $('#set-base').value=''; $('#set-model').value=''; $('#set-key').value='';
-  $('#set-presets').innerHTML='';
-  setBusy(true,'正在读取当前配置…');
-  fetch('/api/settings/llm').then(r=>r.json()).then(d=>{
-    setBusy(false);
-    $('#set-base').value = d.base_url||'';
-    $('#set-model').value = d.model||'';
-    $('#set-key').value = '';
-    $('#set-key').placeholder = d.api_key_set
-      ? ('已保存 '+d.api_key_masked+'，留空表示不改动') : 'sk-… （必填）';
-    $('#set-file').textContent = '写入 ' + (d.env_file||'.env');
-    $('#set-presets').innerHTML = (d.presets||[]).map((p,i)=>
-      `<button type="button" class="ghost" data-i="${i}" title="${esc(p.note||'')}">${esc(p.label)}</button>`).join('');
-    $('#set-presets').querySelectorAll('button').forEach(b=>{
-      b.onclick = ()=>{
-        const p = d.presets[+b.dataset.i];
-        $('#set-base').value = p.base_url; $('#set-model').value = p.model;
-        setMsg('已填入 <b>'+esc(p.label)+'</b> 的端点与模型名，别忘了填 API key。','warn');
-      };
-    });
-    if(d.writable===false){
-      $('#set-save').disabled=true; $('#set-test').disabled=true;
-      setMsg('当前不是从本机（127.0.0.1）访问的，为了不把 key 交出去，这里只能看不能改。','warn');
-    }else if(d.shadowed && d.shadowed.length){
-      setMsg('注意：系统环境变量里已经有 <b>'+esc(d.shadowed.join('、'))+
-             '</b>，它的优先级高于 .env —— 这里保存本次运行会生效，'+
-             '但重启后还是会被环境变量盖回去。','warn');
-    }else if(!d.configured){
-      setMsg('还没配置。填好三项后点「保存并验证」。','warn');
-    }
-    $('#set-base').focus();
-  }).catch(e=>{ setBusy(false); setMsg('读取配置失败：'+esc(String(e)),'err'); });
-}
-function closeSettings(){ $('#set-bd').classList.add('hide'); }
-
-function setPayload(){
-  return {
-    base_url: $('#set-base').value.trim(),
-    model: $('#set-model').value.trim(),
-    api_key: $('#set-key').value,
-  };
-}
-async function postSettings(path, payload){
-  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
-                               body: JSON.stringify(payload)});
-  let d = {}; try{ d = await r.json(); }catch(e){}
-  return {status:r.status, d:d||{}};
-}
-function bindForceSave(){
-  const f = $('#set-force');
-  if(f) f.onclick = ()=> saveSettings(false);
-}
-async function saveSettings(verify){
-  setBusy(true, verify ? '正在用这套配置做一次真实调用验证…' : '正在保存…');
-  try{
-    // 注意别把返回值解构成 status —— 那会遮蔽上面的全局 status() 函数
-    const r = await postSettings('/api/settings/llm',
-      Object.assign(setPayload(), {verify: verify, persist: true}));
-    const d = r.d;
-    setBusy(false);
-    if(d.ok){
-      setMsg('✅ ' + esc(d.message || '已保存') +
-             (d.warning ? '<br>' + esc(d.warning) : ''), d.warning ? 'warn' : 'ok');
-      $('#set-key').value='';
-      if(d.api_key_set) $('#set-key').placeholder = '已保存 '+d.api_key_masked+'，留空表示不改动';
-      status();
-    }else{
-      setMsg('❌ ' + esc(d.error || ('HTTP '+r.status)) +
-             (d.hint ? '<br><span class="small">'+esc(d.hint)+'</span>' : '') +
-             (verify ? '<br><span class="lnk" id="set-force">跳过验证，仍然保存</span>' : ''), 'err');
-      bindForceSave();
-    }
-  }catch(e){ setBusy(false); setMsg('保存失败：'+esc(String(e)),'err'); }
-}
-async function testSettings(){
-  setBusy(true,'正在真实调用一次该端点…');
-  try{
-    const r = await postSettings('/api/settings/llm/test', setPayload());
-    const d = r.d;
-    setBusy(false);
-    if(d.ok){
-      setMsg('✅ 连接成功：<b>'+esc(d.model)+'</b> 回复「'+esc(d.reply)+'」（'+d.ms+' ms）','ok');
-    }else{
-      setMsg('❌ 连接失败：'+esc(d.error || ('HTTP '+r.status)) +
-             (d.ms ? '（'+d.ms+' ms）' : ''), 'err');
-    }
-  }catch(e){ setBusy(false); setMsg('测试失败：'+esc(String(e)),'err'); }
-}
-
-$('#settings-btn').onclick = openSettings;
-$('#set-save').onclick = ()=> saveSettings(true);
-$('#set-test').onclick = testSettings;
-$('#set-close').onclick = closeSettings;
-$('#set-bd').onclick = e=>{ if(e.target === $('#set-bd')) closeSettings(); };
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSettings(); });
-// /?settings=1 可以直接把设置弹窗打开（计算器页的「模型设置」链接指到这里）
-if(new URLSearchParams(location.search).get('settings')) openSettings();
-
-status();
-</script>
-</body>
-</html>
-"""
+        return ocr_mod.SETTINGS.configured
+    except Exception:
+        return False
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -460,13 +158,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:                 # noqa: N802
         path = urllib.parse.urlsplit(self.path).path
         try:
-            if path in ("/", "/index.html"):
-                self._send(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
-            elif path in ("/calc", "/calc/"):
-                self._send(200, CALC_PAGE.encode("utf-8"), "text/html; charset=utf-8")
-            elif path in ("/calc-docs", "/calc-docs/"):
-                self._send(200, CALC_DOCS_PAGE.encode("utf-8"),
-                           "text/html; charset=utf-8")
+            if path in ("/", "/index.html", "/calc", "/calc/", "/calc-docs",
+                        "/calc-docs/") or path.startswith("/calc/"):
+                # 单页应用：/calc 与 /calc-docs 只是同一份页面的不同 hash 入口，
+                # 由前端 hash 路由决定落在哪个视图（老书签因此继续有效）。
+                self._send(200, page_html().encode("utf-8"), "text/html; charset=utf-8")
             elif path == "/api/status":
                 self._status()
             elif path == "/api/search":
@@ -477,6 +173,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._ask()
             elif path == "/api/settings/llm":
                 self._settings_get()
+            elif path == "/api/settings/ocr":
+                self._ocr_settings_get()
+            elif path == "/api/settings/auth":
+                self._auth_settings_get()
+            elif path == "/api/attachment":
+                self._attachment()
+            elif path == "/api/attachment/file":
+                self._attachment_file()
             elif path == "/api/calc/catalog":
                 self._calc_catalog()
             elif path == "/api/calc/target":
@@ -504,6 +208,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._settings_save()
             elif path == "/api/settings/llm/test":
                 self._settings_test()
+            elif path == "/api/settings/ocr":
+                self._ocr_settings_save()
+            elif path == "/api/settings/ocr/test":
+                self._ocr_settings_test()
+            elif path == "/api/settings/ocr/clear":
+                self._ocr_settings_clear()
+            elif path == "/api/settings/auth":
+                self._auth_settings_save()
+            elif path == "/api/settings/auth/captcha":
+                self._auth_settings_captcha()
+            elif path == "/api/settings/auth/clear":
+                self._auth_settings_clear()
+            elif path == "/api/settings/auth/logout":
+                self._auth_settings_logout()
             else:
                 self._json({"error": "not found"}, 404)
         except (BrokenPipeError, ConnectionResetError):
@@ -531,6 +249,9 @@ class Handler(BaseHTTPRequestHandler):
             "llm_base_url": SETTINGS.llm.base_url,
             "web_search": SearchSettings.from_env().provider, "last_crawl": last,
             "db": str(SETTINGS.crawl.db_path),
+            "attachments": s.get("attachments", 0),
+            "attachments_with_text": s.get("attachments_with_text", 0),
+            "ocr_configured": _ocr_on(),
         })
 
     def _search(self) -> None:
@@ -560,7 +281,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json(art or {"error": "not found"})
 
     # ------------------------------------------------------------------ #
-    # LLM 设置（首页右上角「⚙️ 设置」）
+    # LLM 设置（侧栏底部「⚙️ 设置」的第一个分页：🧠 模型）
     #
     # 界面上填的三项就是 .env 里的 LLM_BASE_URL / LLM_MODEL / LLM_API_KEY；
     # 保存时既落盘（下次启动仍生效）又原地更新 SETTINGS.llm（不用重启服务）。
@@ -686,6 +407,467 @@ class Handler(BaseHTTPRequestHandler):
                         "model": model}, 400)
 
     # ------------------------------------------------------------------ #
+    # 附件与 OCR 设置（侧栏「⚙️ 设置」的第二个分页：🖼 附件与 OCR）
+    #
+    # 与 LLM 设置同一套规矩：key 只回显掩码、只允许本机改、保存即落盘并原地生效。
+    # 区别是 OCR 的「验证」会真的发一张测试图（消耗一次免费额度，所以是可选动作）。
+    # ------------------------------------------------------------------ #
+    def _ocr_state(self, extra: dict | None = None) -> dict:
+        from . import attachments as attach_mod
+        from . import ocr as ocr_mod
+
+        st = Store(SETTINGS.crawl.db_path)
+        try:
+            stats = st.stats()
+        except Exception:
+            stats = {}
+        st.close()
+        a = attach_mod.AttachmentSettings.from_env()
+        dstat = attach_mod.dir_stats(a.dir)
+        state = {
+            "provider": ocr_mod.SETTINGS.provider,
+            "accurate": ocr_mod.SETTINGS.accurate,
+            "configured": ocr_mod.SETTINGS.configured,
+            "label": ocr_mod.SETTINGS.describe() if ocr_mod.SETTINGS.configured else "",
+            "api_key_set": bool(ocr_mod.SETTINGS.api_key),
+            "api_key_masked": ocr_mod.mask(ocr_mod.SETTINGS.api_key),
+            "secret_key_set": bool(ocr_mod.SETTINGS.secret_key),
+            "secret_key_masked": ocr_mod.mask(ocr_mod.SETTINGS.secret_key),
+            "endpoint": ocr_mod.SETTINGS.endpoint,
+            "env_file": str(ENV_FILE),
+            "writable": self._is_local(),
+            "shadowed": sorted(env_file_shadowed_keys() & set(OCR_ENV_KEYS)),
+            "attach_dir": dstat["dir"],
+            "attach_stat": {"files": dstat["files"], "bytes": dstat["bytes"],
+                            "human": dstat["human"]},
+            "attachments": stats.get("attachments", 0),
+            "attachments_with_text": stats.get("attachments_with_text", 0),
+            "attach_enabled": a.enabled,
+            "attach_max_mb": a.max_bytes_per_file // 1048576,
+            "attach_max_files": a.max_files_per_article,
+            "supported": len(__import__("harness.docparse", fromlist=["x"])
+                             .supported_extensions()),
+        }
+        state.update(extra or {})
+        return state
+
+    def _ocr_settings_get(self) -> None:
+        self._json(self._ocr_state())
+
+    def _ocr_settings_save(self) -> None:
+        if not self._is_local():
+            self._json({"ok": False, "writable": False,
+                        "error": "出于安全考虑，只有从本机（127.0.0.1）打开页面才能改设置。"}, 403)
+            return
+        from . import ocr as ocr_mod
+        from .config import apply_ocr_settings
+
+        payload = self._read_body()
+        if not payload:
+            self._json({"ok": False, "error": "请求体为空或不是合法 JSON"}, 400)
+            return
+        provider = str(payload.get("provider") or "").strip().lower() or None
+        api_key = payload.get("api_key")
+        secret = payload.get("secret_key")
+        api_key = api_key.strip() if isinstance(api_key, str) else ""
+        secret = secret.strip() if isinstance(secret, str) else ""
+        accurate = payload.get("accurate")
+        accurate = bool(accurate) if accurate is not None else None
+        verify = bool(payload.get("verify", True))
+        persist = bool(payload.get("persist", True))
+
+        eff_key = api_key or ocr_mod.SETTINGS.api_key
+        eff_secret = secret or ocr_mod.SETTINGS.secret_key
+        eff_provider = provider or ocr_mod.SETTINGS.provider
+
+        if verify and eff_provider == "baidu":
+            if not (eff_key and eff_secret):
+                self._json({"ok": False,
+                            "error": "百度 OCR 需要 API Key 和 Secret Key 两个值都填。"}, 400)
+                return
+            probe = ocr_mod.OCRSettings(provider="baidu", api_key=eff_key,
+                                        secret_key=eff_secret,
+                                        accurate=bool(accurate) if accurate is not None
+                                        else ocr_mod.SETTINGS.accurate)
+            ok, msg = ocr_mod.health(probe)
+            if not ok:
+                self._json({"ok": False, "verified": False,
+                            "hint": "确认这对 AK/SK 来自同一个百度智能云应用，"
+                                    "并且开通了「通用文字识别」。也可以不勾选验证直接保存。",
+                            "error": msg}, 400)
+                return
+            verified, reply = True, msg
+        else:
+            verified, reply = False, ""
+
+        res = apply_ocr_settings(provider=provider, api_key=api_key or None,
+                                 secret_key=secret or None, accurate=accurate,
+                                 persist=persist)
+        parts = []
+        if res["applied"]:
+            parts.append("已更新 " + "、".join(res["applied"]))
+        else:
+            parts.append("没有填写新值，配置未改动")
+        if verified:
+            parts.append(reply)
+        parts.append(f"已写入 {ENV_FILE}" if res["wrote"] else "仅本次运行生效，未落盘")
+        self._json(self._ocr_state({
+            "ok": True, "verified": verified, "reply": reply,
+            "applied": res["applied"], "persisted": res["wrote"],
+            "warning": res["warning"],
+            "message": "；".join(p for p in parts if p),
+        }))
+
+    def _ocr_settings_test(self) -> None:
+        if not self._is_local():
+            self._json({"ok": False,
+                        "error": "出于安全考虑，只有从本机（127.0.0.1）打开页面才能测试。"}, 403)
+            return
+        from . import ocr as ocr_mod
+
+        payload = self._read_body()
+        api_key = payload.get("api_key")
+        secret = payload.get("secret_key")
+        api_key = (api_key.strip() if isinstance(api_key, str) else "") or ocr_mod.SETTINGS.api_key
+        secret = (secret.strip() if isinstance(secret, str) else "") or ocr_mod.SETTINGS.secret_key
+        accurate = payload.get("accurate")
+        probe = ocr_mod.OCRSettings(
+            provider="baidu", api_key=api_key, secret_key=secret,
+            accurate=bool(accurate) if accurate is not None else ocr_mod.SETTINGS.accurate)
+        if not probe.configured:
+            self._json({"ok": False, "error": "还没填 API Key / Secret Key"}, 400)
+            return
+        ok, msg = ocr_mod.health(probe)
+        self._json({"ok": ok, "message": msg} if ok else {"ok": False, "error": msg},
+                   200 if ok else 400)
+
+    def _ocr_settings_clear(self) -> None:
+        if not self._is_local():
+            self._json({"ok": False, "error": "只有从本机打开页面才能清除凭据。"}, 403)
+            return
+        from .config import clear_ocr_settings
+
+        res = clear_ocr_settings()
+        self._json(self._ocr_state({"ok": True, "warning": res["warning"],
+                                    "message": "已清除 OCR 凭据"}))
+
+    # ------------------------------------------------------------------ #
+    # 登录墙设置（侧栏「⚙️ 设置」的第三个分页：🔐 账号与登录）
+    #
+    # 和 LLM / OCR 两页同一套规矩：只允许本机改、密码只回显掩码。
+    # 区别有两点：
+    #   ① 账号密码**不写 .env**，只落 `.auth/credentials.json`（已 gitignore、
+    #      权限收紧到当前用户）；.env 里只放「自动登录 / 验证码 OCR」这些开关。
+    #   ② 保存时默认**真的登一次**（要走学校 CAS），所以"测试"与"保存"是同一件事；
+    #      OCR 认不出验证码时会把图带回来，让用户在弹窗里手填一次。
+    # ------------------------------------------------------------------ #
+    def _auth_state(self, extra: dict | None = None) -> dict:
+        from . import auth as auth_mod
+
+        sess = auth_mod.AuthSession()
+        st = auth_mod.SETTINGS
+        state = {
+            "credentials": auth_mod.credentials_state(),
+            "session": auth_mod.session_state(sess),
+            "settings": {
+                "auto_login": st.auto_login,
+                "ocr_captcha": st.ocr_captcha,
+                "captcha_rounds": st.captcha_rounds,
+                "service": st.service or auth_mod.DEFAULT_SERVICE,
+                "service_custom": bool(st.service),
+                "captcha_url": st.captcha_url,
+            },
+            "ocr_configured": _ocr_on(),
+            "cas_base": auth_mod.CAS_BASE,
+            "default_service": auth_mod.DEFAULT_SERVICE,
+            "env_file": str(ENV_FILE),
+            "writable": self._is_local(),
+            "shadowed": sorted(env_file_shadowed_keys() & set(AUTH_ENV_KEYS)),
+        }
+        state.update(extra or {})
+        return state
+
+    def _auth_settings_get(self) -> None:
+        self._json(self._auth_state())
+
+    def _auth_settings_save(self) -> None:
+        if not self._is_local():
+            self._json({"ok": False, "writable": False,
+                        "error": "出于安全考虑，只有从本机（127.0.0.1）打开页面才能填账号。"}, 403)
+            return
+        from . import auth as auth_mod
+        from .config import apply_auth_settings
+
+        payload = self._read_body()
+        if not payload:
+            self._json({"ok": False, "error": "请求体为空或不是合法 JSON"}, 400)
+            return
+        username = str(payload.get("username") or "").strip()
+        raw_pw = payload.get("password")
+        password = raw_pw.strip() if isinstance(raw_pw, str) else ""
+        save_password = bool(payload.get("save_password", True))
+        verify = bool(payload.get("verify", True))
+        persist = bool(payload.get("persist", True))
+        auto_login = payload.get("auto_login")
+        ocr_captcha = payload.get("ocr_captcha")
+        rounds = payload.get("captcha_rounds")
+        service = payload.get("service")
+        captcha_url = payload.get("captcha_url")
+        try:
+            rounds_val = None if rounds in (None, "") else int(rounds)
+        except (TypeError, ValueError):
+            rounds_val = None
+
+        res = apply_auth_settings(
+            auto_login=None if auto_login is None else bool(auto_login),
+            ocr_captcha=None if ocr_captcha is None else bool(ocr_captcha),
+            captcha_rounds=rounds_val,
+            service=None if service is None else str(service),
+            captcha_url=None if captcha_url is None else str(captcha_url),
+            persist=persist,
+        )
+
+        stored_user, stored_pw = auth_mod.load_credentials()
+        eff_user = username or stored_user
+        eff_pw = password or stored_pw
+        cred_saved = False
+        if username and password and save_password:
+            try:
+                auth_mod.save_credentials(username, password)
+                cred_saved = True
+            except OSError as e:
+                res["warning"] = (res["warning"] + "；" if res["warning"] else "") \
+                    + f"账号写盘失败：{e}"
+
+        parts = []
+        if res["applied"]:
+            parts.append("已更新 " + "、".join(res["applied"]))
+        if cred_saved:
+            parts.append(f"账号 {auth_mod.mask_username(username)} 已保存到 "
+                         f"{auth_mod.cred_file().name}")
+        elif password and not save_password:
+            parts.append("密码只在本次登录使用，未落盘")
+        parts.append(f"已写入 {ENV_FILE}" if res["wrote"] else "仅本次运行生效，未落盘")
+
+        base = {"ok": True, "applied": res["applied"], "persisted": res["wrote"],
+                "credential_saved": cred_saved, "warning": res["warning"]}
+
+        if not verify:
+            self._json(self._auth_state({**base, "verified": False,
+                                         "message": "；".join(p for p in parts if p)}))
+            return
+
+        if not (eff_user and eff_pw):
+            self._json(self._auth_state({
+                **base, "verified": False,
+                "error": "要真登一次得有账号和密码：填好再点「保存并登录」，"
+                         "或者取消勾选验证只保存设置。",
+                "message": "；".join(p for p in parts if p) or "设置已保存"}), 200)
+            return
+
+        out = self._do_login(eff_user, eff_pw, auth_mod.SETTINGS.service)
+        if out.get("need_captcha"):
+            self._json(self._auth_state({**base, **out}), 200)
+            return
+        if not out.get("ok"):
+            self._json(self._auth_state({
+                **base, "verified": False, "error": out.get("error"),
+                "hint": out.get("hint", ""),
+                "message": "；".join(p for p in parts if p)}), 200)
+            return
+        parts.append(out.get("message", "登录成功"))
+        self._json(self._auth_state({**base, "verified": True, **out,
+                                     "message": "；".join(p for p in parts if p)}))
+
+    def _do_login(self, user: str, pw: str, service: str = "") -> dict:
+        """真登一次。OCR 认不出验证码时把图 + 待续 token 带回去让人填。"""
+        from . import auth as auth_mod
+
+        sess = auth_mod.AuthSession()
+        target = service or auth_mod.SETTINGS.service or auth_mod.DEFAULT_SERVICE
+        form, captcha_text, cap_err = auth_mod.begin_login(sess, target)
+        if not form.ok:
+            return {"ok": False, "error": form.error or "打不开登录页",
+                    "hint": "检查网络，或确认 AUTH_SERVICE / 默认融合门户是不是可达。"}
+        if any(b in ("slider", "sms", "2fa") for b in form.blockers):
+            return {"ok": False,
+                    "error": "登录页要求 " + "、".join(form.blockers) + "，脚本过不去",
+                    "hint": "这种站点请改用浏览器 Cookie 导入（python -m harness.cli login --cookie）。"}
+        if form.captcha_field and not captcha_text:
+            token = _stash_login(sess, form, user)
+            ch = form.challenge
+            return {"ok": False, "need_captcha": True, "token": token,
+                    "captcha_field": form.captcha_field,
+                    "captcha_image": ch.data_url() if ch else "",
+                    "error": "验证码 OCR 没认出来：" + (cap_err or "原因不明"),
+                    "hint": "照着下面的图填一次（填完直接登录），或换一张再试。"}
+        res = sess.submit_login(form, user, pw, captcha_text)
+        return self._login_payload(sess, res)
+
+    @staticmethod
+    def _login_payload(sess, res) -> dict:
+        if not res.ok:
+            return {"ok": False, "error": res.message,
+                    "captcha_seen": res.captcha_seen,
+                    "captcha_text": res.captcha_text,
+                    "captcha_rounds": res.captcha_rounds,
+                    "cookies": res.cookies,
+                    "hint": ("账号或密码不对？密码是统一身份认证的密码，不是教务系统单独设的。"
+                             if not res.captcha_seen else
+                             "验证码认错也有可能：可以换一张重试，或手填一次。")}
+        try:
+            sess.save_cookies()
+        except OSError:
+            pass
+        extra = ""
+        if res.captcha_text:
+            extra = f"（验证码 OCR 认成「{res.captcha_text}」，第 {res.captcha_rounds} 张）"
+        return {"ok": True, "verified": True, "cookies": res.cookies,
+                "final_url": res.final_url, "need_captcha": False,
+                "message": f"登录成功{extra}，会话已存到 .auth/，crawl 会带着它抓"}
+
+    def _auth_settings_captcha(self) -> None:
+        """OCR 认不出时，用人工填的验证码把这次登录做完。"""
+        if not self._is_local():
+            self._json({"ok": False, "error": "只有从本机打开页面才能登录。"}, 403)
+            return
+        from . import auth as auth_mod
+
+        payload = self._read_body()
+        token = str(payload.get("token") or "")
+        text = str(payload.get("captcha") or "").strip()
+        raw_pw = payload.get("password")
+        password = raw_pw.strip() if isinstance(raw_pw, str) else ""
+        if not text:
+            self._json({"ok": False, "error": "验证码不能为空"}, 400)
+            return
+        entry = _pop_login(token)
+        if entry is None:
+            self._json({"ok": False,
+                        "error": "这次登录已经过期（超过 5 分钟或已被用掉），请重新点「保存并登录」"},
+                       400)
+            return
+        sess, form, user = entry
+        pw = password or auth_mod.load_credentials()[1]
+        if not pw:
+            self._json({"ok": False, "error": "密码丢了，请重新填一次密码再登录"}, 400)
+            return
+        res = sess.submit_login(form, user, pw, text)
+        out = self._login_payload(sess, res)
+        if not out.get("ok") and res.captcha_seen:
+            # 手填的也不对：再给一张新的验证码，别让用户重新走一遍全流程
+            new_token = _stash_login(sess, form, user)
+            out.update({"need_captcha": True, "token": new_token,
+                        "captcha_image": res.captcha_data_url(),
+                        "hint": "这个验证码不对，换一张再试。"})
+        message = "验证码登录成功" if out.get("ok") else out.get("error", "登录失败")
+        self._json(self._auth_state({**out, "message": message}),
+                   200 if out.get("ok") or out.get("need_captcha") else 400)
+
+    def _auth_settings_clear(self) -> None:
+        if not self._is_local():
+            self._json({"ok": False, "error": "只有从本机打开页面才能清除凭据。"}, 403)
+            return
+        from . import auth as auth_mod
+        from .config import clear_auth_credentials
+
+        res = clear_auth_credentials()
+        self._json(self._auth_state({
+            "ok": True, "removed": res["removed"],
+            "message": "已清除保存的账号密码（cookie 会话仍在，要一并清就点「退出登录」）"
+                       if res["removed"] else "本来就没有保存账号"}))
+
+    def _auth_settings_logout(self) -> None:
+        if not self._is_local():
+            self._json({"ok": False, "error": "只有从本机打开页面才能清除会话。"}, 403)
+            return
+        from . import auth as auth_mod
+
+        sess = auth_mod.AuthSession()
+        n = sess.alive()
+        sess.clear()
+        self._json(self._auth_state({"ok": True,
+                                     "message": f"已清除会话（{n} 个 cookie），"
+                                                f"账号密码保留"}))
+
+    def _attachment(self) -> None:
+        """读一份附件的解析结果（卡片上「看解析出的正文」用）。"""
+        q = self._query()
+        st = Store(SETTINGS.crawl.db_path)
+        try:
+            if q.get("id"):
+                row = st.get_attachment(int(q["id"]))
+            elif q.get("article"):
+                rows = st.get_attachments(int(q["article"]))
+                row = rows[0] if rows else None
+            else:
+                row = None
+        except (TypeError, ValueError):
+            row = None
+        st.close()
+        if not row:
+            self._json({"error": "not found"}, 404)
+            return
+        # 不把整份附件正文无脑吐给前端：默认 2 万字，够看且不会把页面卡死
+        self._json({
+            "id": row.get("id"), "article_id": row.get("article_id"),
+            "url": row.get("url"), "filename": row.get("filename"),
+            "kind": row.get("kind"), "bytes": row.get("bytes"),
+            "stored": row.get("stored"), "parser": row.get("parser"),
+            "note": row.get("note"), "error": row.get("error"),
+            "tables": row.get("tables"), "images": row.get("images"),
+            "ocr_used": row.get("ocr_used"), "ocr_chars": row.get("ocr_chars"),
+            "chars": len(row.get("text") or ""),
+            "text": (row.get("text") or "")[:20000],
+            "truncated": len(row.get("text") or "") > 20000,
+        })
+
+    def _attachment_file(self) -> None:
+        """把下载到 data/attachments/ 的文件本体发出去（本地预览/下载）。
+
+        只允许发附件目录里的文件：路径先做 realpath 再判断前缀，
+        防止 `../` 之类的路径穿越读到仓库里别的东西。
+        """
+        import mimetypes
+        import urllib.parse as up
+        from pathlib import Path
+
+        from .attachments import ATTACH_DIR
+
+        q = self._query()
+        rel = up.unquote(q.get("stored") or q.get("path") or "")
+        if not rel:
+            self._json({"error": "缺少 stored 参数"}, 400)
+            return
+        base = ATTACH_DIR.resolve()
+        # stored 存的是「相对项目根」的路径（data/attachments/2026/03/xxx.pdf），
+        # 而这里要的是「相对附件目录」的路径，两种写法都接受。
+        rel_norm = rel.replace("\\", "/").lstrip("/")
+        prefix = "data/attachments/"
+        if rel_norm.startswith(prefix):
+            rel_norm = rel_norm[len(prefix):]
+        target = (base / rel_norm).resolve() if not Path(rel_norm).is_absolute() \
+            else Path(rel_norm).resolve()
+        if target != base and base not in target.parents:
+            self._json({"error": "越权路径"}, 403)
+            return
+        if not target.is_file():
+            self._json({"error": "文件不存在（可能已被清理）"}, 404)
+            return
+        data = target.read_bytes()
+        ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        ascii_name = target.name.encode("ascii", "ignore").decode() or "attachment"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header(
+            "Content-Disposition",
+            f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{up.quote(target.name)}")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    # ------------------------------------------------------------------ #
     # 计算器 API
     # ------------------------------------------------------------------ #
     @staticmethod
@@ -781,7 +963,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         dry = (q.get("dry") or "").lower() in ("1", "true", "yes")
         if not SETTINGS.llm.configured and not dry:
-            sse("answer", {"text": "", "error": "尚未配置 LLM API key：点右上角「⚙️ 设置」填入 "
+            sse("answer", {"text": "", "error": "尚未配置 LLM API key：点左下「⚙️ 设置 → 🧠 模型」填入 "
                                                     "base URL / 模型名 / API key 即可（也可运行 "
                                                     "python -m harness.cli setup-key）。"
                                                     "想先看检索结果就勾上「仅检索验证」。",
@@ -822,6 +1004,11 @@ class Handler(BaseHTTPRequestHandler):
                                       "补 " + "；".join(x["query"] for x in miss))
             elif step == "evidence":
                 text = f"{label}：{data.get('count')} 条进入生成"
+            elif step == "cards":
+                st = data.get("stats", {}) or {}
+                text = ("⑦ 卡片：活动 %s 张（命中已核验名录 %s）· 附件 %s 个 · 时间 %s 条"
+                        % (st.get("activities", 0), st.get("matched", 0),
+                           st.get("files", 0), st.get("times", 0)))
             else:
                 text = f"{step}: {json.dumps(data, ensure_ascii=False)[:200]}"
             sse("trace", {"text": text})
@@ -843,6 +1030,10 @@ class Handler(BaseHTTPRequestHandler):
                     "citations": agent.build_citations(ans),
                     "usage": llm.usage.line(),
                 })
+            # ⑦ 卡片：活动/赛事 + 附件 + 关键时间。单独一个事件推送，
+            # 让前端先渲染正文再补卡片，长回答的首屏更快。
+            if ans.cards:
+                sse("cards", ans.cards)
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:
@@ -880,6 +1071,7 @@ def serve(host: str = "127.0.0.1", port: int = 8848, open_browser: bool = True) 
     print(f"  库文件   : {SETTINGS.crawl.db_path}")
     print(f"  LLM      : {SETTINGS.llm.model} ({'已配置' if SETTINGS.llm.configured else '未配置'})")
     print(f"  公网搜索 : {SearchSettings.from_env().provider}")
+    print("  左侧栏切换：主页对话 / 绩点计算器（含四个子页）/ 数据口径说明")
     print("  Ctrl+C 停止")
     print("=" * 70)
     if open_browser:
