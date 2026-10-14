@@ -38,6 +38,8 @@ class Evidence:
     score: float = 0.0
     body: str = ""
     stale: bool = False
+    #: 命中的附件（附件正文参与检索时记录，卡片层据此展示「这条信息来自哪个附件」）
+    attach_hits: list[dict] = field(default_factory=list)
 
     @property
     def age_days(self) -> int | None:
@@ -60,6 +62,9 @@ class Answer:
     trace: list[tuple[str, dict]] = field(default_factory=list)
     error: str = ""
     prompt: str = ""          # dry_run 时填充：真正会送进模型的上下文
+    # 对话卡片（活动/赛事、附件、关键时间）。由 harness.cards 从证据里确定性抽取，
+    # 不经模型生成——见 cards.py 的模块说明。
+    cards: dict = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -202,19 +207,39 @@ class Agent:
         self._rank_and_budget(evidence)
         tr("evidence", {"count": len(evidence)})
 
+        # ⑧ 卡片装配（无模型、无网络；失败不影响答题）
+        cards = self._build_cards(evidence)
+        tr("cards", {"stats": cards.get("stats", {})})
+
         if dry_run:
             prompt = self.build_prompt(question, evidence)
             return Answer(question=question, text="", evidence=evidence,
-                          subqueries=subqueries, rounds=0, prompt=prompt)
+                          subqueries=subqueries, rounds=0, prompt=prompt,
+                          cards=cards)
 
         # ⑥⑦ 生成
         try:
             text = self._generate(question, evidence)
         except LLMError as e:
             return Answer(question=question, text="", evidence=evidence,
-                          subqueries=subqueries, rounds=rounds, error=str(e))
+                          subqueries=subqueries, rounds=rounds, error=str(e),
+                          cards=cards)
         return Answer(question=question, text=text, evidence=evidence,
-                      subqueries=subqueries, rounds=rounds)
+                      subqueries=subqueries, rounds=rounds, cards=cards)
+
+    def _build_cards(self, evidence: list[Evidence]) -> dict:
+        """把证据整理成对话卡片（活动/赛事、附件、关键时间）。
+
+        刻意不让它抛异常：卡片是「加分项」，抽不出来也不该让整个问答失败。
+        装配前已经把附件名从库里取过一次，所以这里把 store 一起传进去。
+        """
+        try:
+            from . import cards as cards_mod
+
+            return cards_mod.build_cards(evidence, store=self.store).as_dict()
+        except Exception as e:                     # noqa: BLE001
+            return {"activities": [], "files": [], "times": [],
+                    "stats": {"error": f"{type(e).__name__}: {e}"}}
 
     # ------------------------------------------------------------------ #
     def _decompose(self, question: str) -> list[dict]:
@@ -254,7 +279,8 @@ class Agent:
         if site_q:
             with cf.ThreadPoolExecutor(max_workers=min(6, len(site_q))) as ex:
                 per_query = list(ex.map(run_site, site_q))
-            for hits in per_query:
+            attach_ranks: list[int] = []
+            for q, hits in zip(site_q, per_query):
                 ranks = []
                 for h in hits:
                     ev = pool.get(h.article_id)
@@ -270,6 +296,35 @@ class Agent:
                         ev.score = max(ev.score, h.score)
                     ranks.append(h.article_id)
                 rank_lists.append(ranks)
+                # 附件正文命中：把命中的附件所归属的文章顶上（华农的报名表/赛程/名额
+                # 表大多只在附件里，正文里那句「详见附件」是检索不到关键信息的）
+                try:
+                    for a in self.store.search_attachments(q["query"], top_k=4):
+                        aid = int(a.get("article_id") or 0)
+                        if not aid:
+                            continue
+                        attach_ranks.append(aid)
+                        ev = pool.get(aid)
+                        if ev is None:
+                            ev = Evidence(
+                                n=0, title=a.get("title") or "", url=a.get("article_url") or "",
+                                pub_date=a.get("pub_date") or "", snippet=a.get("snippet") or "",
+                                source="site", article_id=aid, topic=a.get("topic") or "",
+                                college=a.get("college") or "", score=0.0,
+                            )
+                            pool[aid] = ev
+                        ev.attach_hits.append({
+                            "attachment_id": int(a.get("attachment_id") or 0),
+                            "filename": a.get("filename") or "",
+                            "stored": a.get("stored") or "",
+                            "kind": a.get("kind") or "",
+                            "snippet": a.get("snippet") or "",
+                        })
+                        ev.score = max(ev.score, 2.0)
+                except Exception:
+                    pass
+            if attach_ranks:
+                rank_lists.append(attach_ranks)
             merged = rrf_merge(rank_lists) if rank_lists else []
             order = [doc_id for doc_id, _ in merged]
             for doc_id, rrf in merged:
@@ -380,6 +435,7 @@ class Agent:
 
         total = 0
         kept: list[Evidence] = []
+        attach_budget = int(os.environ.get("HARNESS_ATTACH_CHARS", "1600") or 1600)
         for e in items:
             e.stale = bool(e.age_days is not None and e.age_days > 548)   # >18 个月
             if e.source == "site" and e.article_id and not e.body:
@@ -389,6 +445,12 @@ class Agent:
             # 公网原件是整页，先抽含关键信息的段落，再截断
             text = (e.body or e.snippet or "")
             text = _condense(text, limit)
+            # 附件正文：报名截止、赛程、名额、加分表几乎只在附件里，
+            # 只把当前证据正文里没有的信息（附件本身）接在后面，预算单独算。
+            if e.source == "site" and e.article_id and attach_budget > 0:
+                extra = self._attachment_excerpt(e, attach_budget)
+                if extra:
+                    text = f"{text}\n\n【该通知附件的正文（系统已下载并解析）】\n{extra}"
             e.snippet = text
             if total + len(text) > budget and kept:
                 continue
@@ -397,6 +459,17 @@ class Agent:
         evidence[:] = kept
         for i, e in enumerate(evidence, 1):
             e.n = i
+
+    def _attachment_excerpt(self, e: Evidence, limit: int) -> str:
+        """取这篇文章附件的正文摘录（优先取与问题相关的段落由 _condense 负责）。"""
+        try:
+            raw = self.store.attachment_text_map(
+                int(e.article_id), max_chars_each=max(600, limit // 2), max_total=limit * 2)
+        except Exception:
+            return ""
+        if not raw.strip():
+            return ""
+        return _condense(raw, limit)
 
     def _fetch_web_bodies(self, evs: list[Evidence], limit: int) -> list[str]:
         """并行抓公网原始页面并抽正文（用独立 Fetcher 避免污染站点限速表）。"""
