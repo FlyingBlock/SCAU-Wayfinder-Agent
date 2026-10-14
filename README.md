@@ -21,13 +21,21 @@ cd SCAU-Wayfinder-Agent
 
 ### 2. 配 API key
 
+**两种填法，写的是同一个文件（仓库根 `.env`）：**
+
 ```powershell
+# ① 命令行：输入时不回显，会先真实调用一次验证，通过了才写进 .env
 python -m harness.cli setup-key
 ```
 
-key 输入时不回显，会先真实调用一次验证，通过了才写进 `.env`。申请地址：<https://platform.deepseek.com/api_keys>
+```powershell
+# ② Web 界面：python -m harness.cli web 之后，点右上角「⚙️ 设置」
+#    填 base URL + 模型名称 + API key，可先「测试连接」再「保存并验证」
+```
 
-想换模型（Ollama / vLLM / 通义 / 智谱都行）：把 `.env.example` 复制成 `.env`，改 `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`。任何 OpenAI 兼容端点都能接。
+界面上填的三项对应 `.env` 里的 `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`，**保存后立即生效，不用重启服务**，重启后也还在。DeepSeek 的 key 申请地址：<https://platform.deepseek.com/api_keys>
+
+想换模型（Ollama / vLLM / 通义 / 智谱 / Kimi / OpenAI 都行）：设置面板里有常见端点的预设按钮，点一下自动填 base URL 与模型名；也可以把 `.env.example` 复制成 `.env` 手改。任何 OpenAI 兼容端点都能接。
 
 > 只用量计算器的话，**这一步可以跳过**——计算器不联网、不调模型、不花钱。
 
@@ -69,7 +77,7 @@ python -m harness.cli doctor
 
 | 命令 | 作用 |
 |---|---|
-| `harness.cli setup-key` | 交互式配置并验证 LLM key |
+| `harness.cli setup-key` | 交互式配置并验证 LLM key / 端点 / 模型（写 `.env`） |
 | `harness.cli doctor` | 自检：种子 / 数据库 / 计算器数据 / LLM 连通性 / 公网搜索 |
 | `harness.cli crawl --scope narrow\|p1\|p2\|all` | 抓取校内栏目群入库 |
 | `harness.cli search "关键词"` | 只在已抓语料里检索，**不花 token**，调词和排错用它 |
@@ -112,7 +120,7 @@ python -m harness.cli ask "保研条件" --quiet --json out/answer.json
 
 **公网搜索。** 默认走 DuckDuckGo Lite，Bing 备用。实测 `cn.bing.com` 会被重定向到百度，`www.bing.com` 返回的结果和查询完全无关，所以只当备胎。
 
-**Web 界面。** 标准库 `http.server` 写的，SSE 流式输出。双击仓库根目录的 `启动Harness.cmd` 也能开。
+**Web 界面。** 标准库 `http.server` 写的，SSE 流式输出。双击仓库根目录的 `启动Harness.cmd` 也能开。右上角「⚙️ 设置」可以直接填 OpenAI 兼容端点的 base URL / 模型名 / API key：回车前先「测试连接」，点「保存并验证」会真实调一次模型，通过才写进 `.env`，同时立刻作用到当前进程（不用重启）。key 只以掩码回显，且只有从本机（127.0.0.1）打开页面才能改——`--host 0.0.0.0` 暴露到局域网时，别人改不了你的 key。
 
 **采集阶段不烧 token。** 列表页和正文全靠正则加 lxml 抽，只有最后生成答案才调模型。一次完整问答大概 20k prompt + 3k completion。
 
@@ -284,13 +292,19 @@ python -m harness.cli calc     # 会告诉你哪些文件被本地覆盖了
 # 后端：不联网，直接跑引擎
 python data/research/smoke_calc.py
 
+# 设置（⚙️）：配置层 + 端到端（自己起假 OpenAI 端点，不碰真 .env）
+python data/research/smoke_settings.py
+
 # 前端：需要一个正在跑的 web 服务
 python -m harness.cli web --port 8879 --no-open
-python data/research/smoke_web.py --port 8879   # HTTP 接口
-python data/research/smoke_ui.py  --port 8879   # 用假 DOM 实跑页面 JS
+python data/research/smoke_web.py      --port 8879   # HTTP 接口
+python data/research/smoke_ui.py       --port 8879   # 用假 DOM 实跑计算器页 JS
+python data/research/smoke_settings_ui.py --port 8879  # 用假 DOM 实跑设置弹窗 JS
 ```
 
-`smoke_calc.py` 里有一批回归断言，包括几个踩过的坑：量纲不同的通道（第二课堂学分、志愿服务时长）不能被当成加分直加进综测总分；`bonus_cap` 必须真的截断；不及格的课不能计入已获学分；重修课要按封顶绩点算。
+`smoke_calc.py` 里有一批回归断言，包括几个踩过的坑：量纲不同的通道（第二课堂学分、志愿服务时长）不能被当成加分直加进综测总分；`bonus_cap` 必须真的截断；不及格的课不能计入已获学分；重修课要按封顶绩点算。（注意：这个脚本的绩点口径断言还停在旧的 `分数 ÷ 20`，与 `calcdata/rules.json` 现行的 `分数 ÷ 10 − 5` 不一致，跑起来会在那几条上报错——`harness.cli calc` 与计算器页面的自检才是现行口径。）
+
+`smoke_settings.py` 覆盖的是设置面板的两段：`.env` 合并写入（保留用户自己写的注释与其它配置、清掉旧的 `DEEPSEEK_*`、留空的字段不覆盖已存值）、保存后不重启是否立刻生效，以及「key 错 → 拒绝写盘」这条最要紧的失败路径。它自带的假 OpenAI 端点让全部断言都不需要真 key、不联网。
 
 ---
 
@@ -318,7 +332,7 @@ L6 输出层   分路线答案 + 逐条 [n] 引用 + 时效标注 + 「本次未
 ```
 SCAU-Wayfinder-Agent/
 ├─ harness/                     Python 包（全部实现）
-│  ├─ config.py     配置与 .env 加载（密钥优先级：环境变量 > .env）
+│  ├─ config.py     配置与 .env 加载（密钥优先级：环境变量 > .env；含设置面板的读写函数）
 │  ├─ seed.py       解析 seed/scau_bio_seed.yaml（自写的 flow-mapping 解析器）
 │  ├─ curate.py     按问题意图裁剪栏目清单（narrow / p1 / p2）
 │  ├─ fetcher.py    urllib 抓取：https 归一化 / 编码探测 / 限速 / 重试 / robots
@@ -330,7 +344,7 @@ SCAU-Wayfinder-Agent/
 │  ├─ agent.py      编排：分解 → 检索 → 缺口 → 补检索 → 生成
 │  ├─ maint.py      语料体检、清理、重抓
 │  ├─ cli.py        命令行入口
-│  ├─ web.py        Web 界面（标准库 http.server + SSE 流式输出）
+│  ├─ web.py        Web 界面（标准库 http.server + SSE 流式输出 + ⚙️ 设置面板）
 │  ├─ calcpages.py  计算器页面与口径说明页（内嵌 HTML）
 │  ├─ crawl.py / crawler.py   采集入口与调度
 │  └─ calc/         绩点 / 综测计算器（零依赖，只读 calcdata/*.json）
@@ -377,8 +391,10 @@ SCAU-Wayfinder-Agent/
 
 | 症状 | 原因与解法 |
 |---|---|
-| `尚未配置 LLM API key` | 跑 `python -m harness.cli setup-key` |
-| `HTTP 401 Authentication Fails` | key 错了或失效了，重新 `setup-key` |
+| `尚未配置 LLM API key` | 跑 `python -m harness.cli setup-key`，或在 Web 界面点右上角「⚙️ 设置」 |
+| `HTTP 401 Authentication Fails` | key 错了或失效了，重新填一次（设置面板的「测试连接」能当场验出来） |
+| 设置保存了却不生效 | 系统环境变量里有同名的 `LLM_API_KEY` / `DEEPSEEK_API_KEY`，优先级高于 `.env`；设置面板和 `cli doctor` 都会提示是哪几个（本次运行仍会生效，重启后被环境变量盖回） |
+| 设置面板提示「只能看不能改」 | 页面不是从本机（127.0.0.1）打开的，改用本机地址访问 |
 | 检索没有命中 | 先 `harness.cli search "短词"` 确认库里有；关键词用 2-6 字，别用整句 |
 | 库内文章数为 0 | 还没抓，跑 `crawl --scope narrow` |
 | 某栏目 0 篇 | 可能是空栏目（正常），也可能模板不同；用 `--url` 单独抓一次看日志 |

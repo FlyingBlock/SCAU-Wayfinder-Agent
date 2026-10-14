@@ -114,6 +114,8 @@ CALC_PAGE = r"""<!DOCTYPE html>
   <nav>
     <a href="/">← 回到信息检索</a>
     <a href="/calc-docs" target="_blank">数据口径说明</a>
+    <!-- 计算器不调模型，但问答复用的是同一份 LLM 配置，这里给个入口指到首页的设置弹窗 -->
+    <a href="/?settings=1" title="OpenAI 兼容端点：base URL / 模型名 / API key">⚙️ 模型设置</a>
   </nav>
   <div class="pills" id="pills"><span class="pill">加载中…</span></div>
 </header>

@@ -4,13 +4,16 @@
 支撑单用户使用，且零依赖。前端是内嵌的 HTML 页面，无构建步骤。
 
 路由：
-  GET  /                    首页（内嵌 HTML/JS）
+  GET  /                    首页（内嵌 HTML/JS，含「⚙️ 设置」弹窗）
   GET  /calc                绩点/综测计算器页面
   GET  /calc-docs           计算器数据口径说明
   GET  /api/status          库状态 + LLM/公网搜索配置灯
   GET  /api/search?q=&k=    纯检索（不花 token）
   GET  /api/article?id=     读某篇正文
   GET  /api/ask?q=&rounds=  提问，SSE 流式返回 trace + answer
+  GET  /api/settings/llm    读当前 LLM 配置（key 只回显掩码）
+  POST /api/settings/llm    保存 base URL / 模型名 / API key（可先真实调用验证）
+  POST /api/settings/llm/test 只测试连通性，不保存
   GET  /api/calc/catalog    计算器全部静态数据（专业/课程/规则/门槛/活动）
   POST /api/calc/evaluate   提交成绩单 + 活动篮，返回完整计算结果
   GET  /api/calc/target     反推：达到目标绩点时剩余课程需要的分数
@@ -28,7 +31,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .agent import Agent
 from .calcpages import CALC_DOCS_PAGE, CALC_PAGE
-from .config import SETTINGS, SearchSettings
+from .config import (
+    ENV_FILE,
+    LLM_ENV_KEYS,
+    LLM_LEGACY_KEYS,
+    LLM_PRESETS,
+    SETTINGS,
+    LLMSettings,
+    SearchSettings,
+    apply_llm_settings,
+    env_file_shadowed_keys,
+)
 from .llm import LLM
 from .store import Store
 from .websearch import WebSearcher
@@ -47,9 +60,11 @@ PAGE = r"""<!DOCTYPE html>
   header{background:var(--bg);border-bottom:1px solid var(--bd);padding:14px 22px;display:flex;
          align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
   header h1{font-size:17px;margin:0;font-weight:650}
-  nav.nav a{font-size:13px;color:var(--acc);text-decoration:none;border:1px solid var(--bd);
-            border-radius:99px;padding:3px 11px;background:var(--bg)}
-  nav.nav a:hover{background:var(--soft)}
+  nav.nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  nav.nav a,nav.nav button{font-size:13px;color:var(--acc);text-decoration:none;border:1px solid var(--bd);
+            border-radius:99px;padding:3px 11px;background:var(--bg);font-weight:500;cursor:pointer}
+  nav.nav a:hover,nav.nav button:hover{background:var(--soft)}
+  nav.nav button.set{border-color:#b6cffa;background:#eaf1fd}
   .pills{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;font-size:12.5px}
   .pill{background:var(--soft);border:1px solid var(--bd);border-radius:99px;padding:3px 11px;color:var(--mut)}
   .pill.ok{color:var(--ok);border-color:#b7e0c2;background:#eaf7ee}
@@ -88,12 +103,37 @@ PAGE = r"""<!DOCTYPE html>
   .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--bd);
         border-top-color:var(--acc);border-radius:50%;animation:r .8s linear infinite;vertical-align:-1px}
   @keyframes r{to{transform:rotate(360deg)}}
+  /* ---- 设置弹窗 ---- */
+  .hide{display:none!important}
+  .bd{position:fixed;inset:0;background:rgba(31,35,40,.45);z-index:50;overflow:auto;
+      padding:52px 16px;display:flex;justify-content:center;align-items:flex-start}
+  .modal{background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:20px 22px;
+         width:100%;max-width:580px;box-shadow:0 14px 38px rgba(31,35,40,.22)}
+  .modal h2{font-size:16px;margin:0 0 6px;font-weight:650}
+  .modal .fld{margin-top:13px}
+  .modal .fld label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:4px}
+  .modal input{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;font:inherit}
+  .modal input:focus{outline:2px solid #b6cffa;outline-offset:-1px;border-color:var(--acc)}
+  .presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .presets button{background:var(--soft);color:var(--fg);border:1px solid var(--bd);
+                  border-radius:99px;padding:3px 10px;font-size:12.5px;font-weight:500}
+  .msg{font-size:13px;margin-top:13px;padding:9px 11px;border-radius:8px;
+       border:1px solid var(--bd);background:var(--soft);word-break:break-word}
+  .msg.ok{color:var(--ok);border-color:#b7e0c2;background:#eaf7ee}
+  .msg.err{color:var(--err);border-color:#f3c0c0;background:#fdeaea}
+  .msg.warn{color:var(--warn);border-color:#eeddaa;background:#fdf6e3}
+  .msg .lnk{color:var(--acc);cursor:pointer;text-decoration:underline dotted}
+  .small{font-size:12.5px;color:var(--mut)}
+  .mono{font-family:ui-monospace,Consolas,monospace}
 </style>
 </head>
 <body>
 <header>
   <h1>🌾 SCAU 学生发展信息 Harness</h1>
-  <nav class="nav"><a href="/calc">📊 绩点 / 综测计算器</a></nav>
+  <nav class="nav">
+    <a href="/calc">📊 绩点 / 综测计算器</a>
+    <button type="button" class="set" id="settings-btn" title="OpenAI 兼容端点：base URL / 模型名 / API key">⚙️ 设置</button>
+  </nav>
   <div class="pills" id="pills"><span class="pill">加载中…</span></div>
 </header>
 <main>
@@ -122,6 +162,46 @@ PAGE = r"""<!DOCTYPE html>
     <div id="refs"></div>
   </div>
 </main>
+
+<!-- ===================== ⚙️ LLM 设置 ===================== -->
+<div class="bd hide" id="set-bd">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="set-title">
+    <h2 id="set-title">⚙️ 模型设置</h2>
+    <div class="small">任何 <b>OpenAI 兼容</b>端点都能接：填 base URL、模型名、API key。
+      保存后立即生效，同时写入仓库根的 <span class="mono">.env</span>（下次启动仍然有效）。</div>
+
+    <div class="presets" id="set-presets"></div>
+
+    <div class="fld">
+      <label for="set-base">Base URL（OpenAI 兼容端点，不含 /chat/completions）</label>
+      <input id="set-base" type="text" spellcheck="false" autocomplete="off"
+             placeholder="https://api.deepseek.com">
+    </div>
+    <div class="fld">
+      <label for="set-model">模型名称</label>
+      <input id="set-model" type="text" spellcheck="false" autocomplete="off"
+             placeholder="deepseek-chat">
+    </div>
+    <div class="fld">
+      <label for="set-key">API Key</label>
+      <input id="set-key" type="password" spellcheck="false" autocomplete="new-password"
+             placeholder="sk-…">
+    </div>
+
+    <div class="msg hide" id="set-msg"></div>
+
+    <div class="row" style="margin-top:14px">
+      <button id="set-save">保存并验证</button>
+      <button class="ghost" id="set-test">测试连接</button>
+      <button class="ghost" id="set-close">关闭</button>
+      <span class="small" id="set-file" style="margin-left:auto"></span>
+    </div>
+    <div class="small" style="margin-top:10px">
+      命令行等价写法：<span class="mono">python -m harness.cli setup-key</span>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => (s||"").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -166,11 +246,14 @@ async function status(){
     const r = await fetch('/api/status'); const d = await r.json();
     const p=[];
     p.push(`<span class="pill ${d.articles?'ok':''}">语料 ${d.articles} 篇 / ${d.sites} 栏目</span>`);
-    p.push(`<span class="pill ${d.llm_configured?'ok':'err'}">LLM ${d.llm_configured?d.llm_model:'未配置'}</span>`);
+    p.push(`<span class="pill llm ${d.llm_configured?'ok':'err'}" style="cursor:pointer"
+             title="点这里改 base URL / 模型名 / API key（${esc(d.llm_base_url||'')}）"
+             >LLM ${d.llm_configured?esc(d.llm_model):'未配置 ⚙️'}</span>`);
     p.push(`<span class="pill ${d.web_search==='none'?'warn':'ok'}">公网 ${d.web_search==='none'?'已关闭':d.web_search}</span>`);
     if(d.with_date) p.push(`<span class="pill">带日期 ${d.with_date}</span>`);
     if(d.last_crawl) p.push(`<span class="pill">最近抓取 ${d.last_crawl}</span>`);
     $('#pills').innerHTML = p.join('');
+    const lp=$('#pills .pill.llm'); if(lp) lp.onclick = openSettings;
   }catch(e){ $('#pills').innerHTML = '<span class="pill err">状态读取失败</span>'; }
 }
 
@@ -214,6 +297,118 @@ document.querySelectorAll('.ex').forEach(el=>el.onclick=()=>{ $('#q').value=el.d
 $('#go').onclick = ask;
 $('#find').onclick = doSearch;
 $('#q').addEventListener('keydown', e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)) ask(); });
+
+/* ===================== ⚙️ 设置：OpenAI 兼容端点 ===================== */
+function setMsg(html, kind){
+  const el=$('#set-msg');
+  if(!html){ el.className='msg hide'; el.innerHTML=''; return; }
+  el.className='msg '+(kind||''); el.innerHTML=html;
+}
+function setBusy(on, what){
+  $('#set-save').disabled=on; $('#set-test').disabled=on;
+  if(on) setMsg('<span class="spin"></span> '+esc(what), '');
+}
+function openSettings(){
+  $('#set-bd').classList.remove('hide');
+  setMsg('');
+  $('#set-base').value=''; $('#set-model').value=''; $('#set-key').value='';
+  $('#set-presets').innerHTML='';
+  setBusy(true,'正在读取当前配置…');
+  fetch('/api/settings/llm').then(r=>r.json()).then(d=>{
+    setBusy(false);
+    $('#set-base').value = d.base_url||'';
+    $('#set-model').value = d.model||'';
+    $('#set-key').value = '';
+    $('#set-key').placeholder = d.api_key_set
+      ? ('已保存 '+d.api_key_masked+'，留空表示不改动') : 'sk-… （必填）';
+    $('#set-file').textContent = '写入 ' + (d.env_file||'.env');
+    $('#set-presets').innerHTML = (d.presets||[]).map((p,i)=>
+      `<button type="button" class="ghost" data-i="${i}" title="${esc(p.note||'')}">${esc(p.label)}</button>`).join('');
+    $('#set-presets').querySelectorAll('button').forEach(b=>{
+      b.onclick = ()=>{
+        const p = d.presets[+b.dataset.i];
+        $('#set-base').value = p.base_url; $('#set-model').value = p.model;
+        setMsg('已填入 <b>'+esc(p.label)+'</b> 的端点与模型名，别忘了填 API key。','warn');
+      };
+    });
+    if(d.writable===false){
+      $('#set-save').disabled=true; $('#set-test').disabled=true;
+      setMsg('当前不是从本机（127.0.0.1）访问的，为了不把 key 交出去，这里只能看不能改。','warn');
+    }else if(d.shadowed && d.shadowed.length){
+      setMsg('注意：系统环境变量里已经有 <b>'+esc(d.shadowed.join('、'))+
+             '</b>，它的优先级高于 .env —— 这里保存本次运行会生效，'+
+             '但重启后还是会被环境变量盖回去。','warn');
+    }else if(!d.configured){
+      setMsg('还没配置。填好三项后点「保存并验证」。','warn');
+    }
+    $('#set-base').focus();
+  }).catch(e=>{ setBusy(false); setMsg('读取配置失败：'+esc(String(e)),'err'); });
+}
+function closeSettings(){ $('#set-bd').classList.add('hide'); }
+
+function setPayload(){
+  return {
+    base_url: $('#set-base').value.trim(),
+    model: $('#set-model').value.trim(),
+    api_key: $('#set-key').value,
+  };
+}
+async function postSettings(path, payload){
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify(payload)});
+  let d = {}; try{ d = await r.json(); }catch(e){}
+  return {status:r.status, d:d||{}};
+}
+function bindForceSave(){
+  const f = $('#set-force');
+  if(f) f.onclick = ()=> saveSettings(false);
+}
+async function saveSettings(verify){
+  setBusy(true, verify ? '正在用这套配置做一次真实调用验证…' : '正在保存…');
+  try{
+    // 注意别把返回值解构成 status —— 那会遮蔽上面的全局 status() 函数
+    const r = await postSettings('/api/settings/llm',
+      Object.assign(setPayload(), {verify: verify, persist: true}));
+    const d = r.d;
+    setBusy(false);
+    if(d.ok){
+      setMsg('✅ ' + esc(d.message || '已保存') +
+             (d.warning ? '<br>' + esc(d.warning) : ''), d.warning ? 'warn' : 'ok');
+      $('#set-key').value='';
+      if(d.api_key_set) $('#set-key').placeholder = '已保存 '+d.api_key_masked+'，留空表示不改动';
+      status();
+    }else{
+      setMsg('❌ ' + esc(d.error || ('HTTP '+r.status)) +
+             (d.hint ? '<br><span class="small">'+esc(d.hint)+'</span>' : '') +
+             (verify ? '<br><span class="lnk" id="set-force">跳过验证，仍然保存</span>' : ''), 'err');
+      bindForceSave();
+    }
+  }catch(e){ setBusy(false); setMsg('保存失败：'+esc(String(e)),'err'); }
+}
+async function testSettings(){
+  setBusy(true,'正在真实调用一次该端点…');
+  try{
+    const r = await postSettings('/api/settings/llm/test', setPayload());
+    const d = r.d;
+    setBusy(false);
+    if(d.ok){
+      setMsg('✅ 连接成功：<b>'+esc(d.model)+'</b> 回复「'+esc(d.reply)+'」（'+d.ms+' ms）','ok');
+    }else{
+      setMsg('❌ 连接失败：'+esc(d.error || ('HTTP '+r.status)) +
+             (d.ms ? '（'+d.ms+' ms）' : ''), 'err');
+    }
+  }catch(e){ setBusy(false); setMsg('测试失败：'+esc(String(e)),'err'); }
+}
+
+$('#settings-btn').onclick = openSettings;
+$('#set-save').onclick = ()=> saveSettings(true);
+$('#set-test').onclick = testSettings;
+$('#set-close').onclick = closeSettings;
+$('#set-bd').onclick = e=>{ if(e.target === $('#set-bd')) closeSettings(); };
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSettings(); });
+// /?settings=1 可以直接把设置弹窗打开（计算器页的「模型设置」链接指到这里）
+if(new URLSearchParams(location.search).get('settings')) openSettings();
+
 status();
 </script>
 </body>
@@ -280,6 +475,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._article()
             elif path == "/api/ask":
                 self._ask()
+            elif path == "/api/settings/llm":
+                self._settings_get()
             elif path == "/api/calc/catalog":
                 self._calc_catalog()
             elif path == "/api/calc/target":
@@ -301,6 +498,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/calc/evaluate":
                 self._calc_evaluate()
+            elif path == "/api/settings/llm":
+                self._settings_save()
+            elif path == "/api/settings/llm/test":
+                self._settings_test()
             else:
                 self._json({"error": "not found"}, 404)
         except (BrokenPipeError, ConnectionResetError):
@@ -325,6 +526,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({
             "articles": s["articles"], "sites": s["sites"], "with_date": s["with_date"],
             "llm_configured": SETTINGS.llm.configured, "llm_model": SETTINGS.llm.model,
+            "llm_base_url": SETTINGS.llm.base_url,
             "web_search": SearchSettings.from_env().provider, "last_crawl": last,
             "db": str(SETTINGS.crawl.db_path),
         })
@@ -354,6 +556,132 @@ class Handler(BaseHTTPRequestHandler):
         art = st.get_article(int(q.get("id") or 0), max_chars=20000)
         st.close()
         self._json(art or {"error": "not found"})
+
+    # ------------------------------------------------------------------ #
+    # LLM 设置（首页右上角「⚙️ 设置」）
+    #
+    # 界面上填的三项就是 .env 里的 LLM_BASE_URL / LLM_MODEL / LLM_API_KEY；
+    # 保存时既落盘（下次启动仍生效）又原地更新 SETTINGS.llm（不用重启服务）。
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _mask_key(key: str) -> str:
+        """key 只回显头尾，整条 key 不出现在响应里。"""
+        if not key:
+            return ""
+        if len(key) <= 10:
+            return key[:2] + "*" * max(len(key) - 2, 0)
+        return f"{key[:6]}…{key[-4:]}"
+
+    def _is_local(self) -> bool:
+        """改配置只允许本机请求：`--host 0.0.0.0` 暴露到局域网时别让人改 key。"""
+        try:
+            host = (self.client_address or ("",))[0]
+        except Exception:
+            host = ""
+        return host in ("127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1")
+
+    def _llm_state(self, extra: dict | None = None) -> dict:
+        llm = SETTINGS.llm
+        state = {
+            "base_url": llm.base_url,
+            "model": llm.model,
+            "configured": llm.configured,
+            "api_key_set": bool(llm.api_key),
+            "api_key_masked": self._mask_key(llm.api_key),
+            "env_file": str(ENV_FILE),
+            "env_file_exists": ENV_FILE.is_file(),
+            "writable": self._is_local(),
+            "shadowed": sorted(env_file_shadowed_keys() & set(LLM_ENV_KEYS + LLM_LEGACY_KEYS)),
+            "presets": [dict(p) for p in LLM_PRESETS],
+        }
+        state.update(extra or {})
+        return state
+
+    def _settings_get(self) -> None:
+        self._json(self._llm_state())
+
+    def _settings_save(self) -> None:
+        if not self._is_local():
+            self._json({"ok": False, "writable": False,
+                        "error": "出于安全考虑，只有从本机（127.0.0.1）打开页面才能改设置。"}, 403)
+            return
+        payload = self._read_body()
+        if not payload:
+            self._json({"ok": False, "error": "请求体为空或不是合法 JSON"}, 400)
+            return
+
+        base_url = str(payload.get("base_url") or "").strip()
+        model = str(payload.get("model") or "").strip()
+        raw_key = payload.get("api_key")
+        api_key = raw_key.strip() if isinstance(raw_key, str) else ""
+        verify = bool(payload.get("verify", True))
+        persist = bool(payload.get("persist", True))
+
+        if base_url and not base_url.lower().startswith(("http://", "https://")):
+            self._json({"ok": False, "error": "base URL 要以 http:// 或 https:// 开头"}, 400)
+            return
+
+        # 留空的项表示「沿用现在的值」（key 不回显，所以不能要求重填）
+        effective_key = api_key or SETTINGS.llm.api_key
+        effective_base = base_url.rstrip("/") or SETTINGS.llm.base_url
+        effective_model = model or SETTINGS.llm.model
+
+        verified, reply, ms = False, "", 0
+        if verify:
+            if not effective_key:
+                self._json({"ok": False, "error": "还没有 API key。本机的 Ollama / vLLM "
+                                                  "也要随便填一个非空值。"}, 400)
+                return
+            t0 = time.time()
+            ok, msg = LLM(LLMSettings(api_key=effective_key, base_url=effective_base,
+                                      model=effective_model, timeout=60)).health()
+            ms = int((time.time() - t0) * 1000)
+            if not ok:
+                self._json({"ok": False, "verified": False, "ms": ms,
+                            "hint": "可以点「跳过验证直接保存」，或检查 base URL / 模型名 / key / 网络。",
+                            "error": f"验证失败：{msg}"}, 400)
+                return
+            verified, reply = True, msg
+
+        res = apply_llm_settings(api_key=api_key or None, base_url=base_url or None,
+                                 model=model or None, persist=persist)
+        parts = ["已更新 " + "、".join(res["applied"]) if res["applied"]
+                 else "三项都没填，配置未改动"]
+        if verified:
+            parts.append(f"真实调用验证通过（模型回复：{reply}）")
+        parts.append(f"已写入 {ENV_FILE}" if res["wrote"]
+                     else ("仅本次运行生效，未落盘" if res["applied"] else ""))
+        self._json(self._llm_state({
+            "ok": True, "verified": verified, "reply": reply, "ms": ms,
+            "applied": res["applied"], "persisted": res["wrote"],
+            "warning": res["warning"],
+            "message": "；".join(p for p in parts if p),
+        }))
+
+    def _settings_test(self) -> None:
+        """按表单里的值真实调一次模型，不落盘、不改当前配置。"""
+        if not self._is_local():
+            self._json({"ok": False,
+                        "error": "出于安全考虑，只有从本机（127.0.0.1）打开页面才能测试连接。"}, 403)
+            return
+        payload = self._read_body()
+        base_url = str(payload.get("base_url") or "").strip().rstrip("/") or SETTINGS.llm.base_url
+        model = str(payload.get("model") or "").strip() or SETTINGS.llm.model
+        raw_key = payload.get("api_key")
+        api_key = (raw_key.strip() if isinstance(raw_key, str) else "") or SETTINGS.llm.api_key
+        if not api_key:
+            self._json({"ok": False, "error": "还没有 API key，请先填入"}, 400)
+            return
+        t0 = time.time()
+        ok, msg = LLM(LLMSettings(api_key=api_key, base_url=base_url, model=model,
+                                  timeout=60)).health()
+        ms = int((time.time() - t0) * 1000)
+        if ok:
+            self._json({"ok": True, "reply": msg, "ms": ms, "base_url": base_url,
+                        "model": model})
+        else:
+            self._json({"ok": False, "error": msg, "ms": ms, "base_url": base_url,
+                        "model": model}, 400)
 
     # ------------------------------------------------------------------ #
     # 计算器 API
@@ -422,8 +750,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         dry = (q.get("dry") or "").lower() in ("1", "true", "yes")
         if not SETTINGS.llm.configured and not dry:
-            sse("answer", {"text": "", "error": "尚未配置 LLM API key，请运行：python -m harness.cli setup-key"
-                                                    "（或勾选「仅检索验证」先看检索结果）",
+            sse("answer", {"text": "", "error": "尚未配置 LLM API key：点右上角「⚙️ 设置」填入 "
+                                                    "base URL / 模型名 / API key 即可（也可运行 "
+                                                    "python -m harness.cli setup-key）。"
+                                                    "想先看检索结果就勾上「仅检索验证」。",
                            "citations": ""})
             sse("done", {})
             return

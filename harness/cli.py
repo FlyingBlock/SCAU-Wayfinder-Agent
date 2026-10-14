@@ -27,10 +27,15 @@ import sys
 import time
 from pathlib import Path
 
-from .config import ROOT, SETTINGS, WORKSPACE
+from .config import (
+    ENV_FILE,
+    LLM_ENV_KEYS,
+    LLM_LEGACY_KEYS,
+    SETTINGS,
+    WORKSPACE,
+    env_file_shadowed_keys,
+)
 from .store import Store
-
-ENV_FILE = ROOT / ".env"
 
 
 # --------------------------------------------------------------------------- #
@@ -79,15 +84,16 @@ def _trace_printer(step: str, data: dict) -> None:
 
 # --------------------------------------------------------------------------- #
 def cmd_setup_key(args: argparse.Namespace) -> int:
+    from .config import LLMSettings, apply_llm_settings
     from .llm import LLM
-    from .config import LLMSettings
 
     print("配置 LLM API key（写入 %s，该文件已在 .gitignore 中）" % ENV_FILE)
-    print("申请地址：https://platform.deepseek.com/api_keys\n")
+    print("申请地址：https://platform.deepseek.com/api_keys")
+    print("（也可以开 Web 界面点右上角「⚙️ 设置」填，效果一样）\n")
     if args.key:
         key = args.key.strip()
     else:
-        key = getpass.getpass("粘贴 DeepSeek API key（输入不回显）: ").strip()
+        key = getpass.getpass("粘贴 API key（输入不回显）: ").strip()
     if not key:
         print("未输入 key，已取消")
         return 1
@@ -106,17 +112,10 @@ def cmd_setup_key(args: argparse.Namespace) -> int:
         return 2
     print(f"✅ 验证通过（模型回复：{msg}）")
 
-    lines: list[str] = []
-    if ENV_FILE.is_file():
-        lines = [ln for ln in ENV_FILE.read_text(encoding="utf-8").splitlines()
-                 if not ln.strip().startswith(("DEEPSEEK_API_KEY", "LLM_API_KEY"))]
-    lines.append(f"DEEPSEEK_API_KEY={key}")
-    if base != "https://api.deepseek.com":
-        lines.append(f"DEEPSEEK_BASE_URL={base}")
-    if model != "deepseek-chat":
-        lines.append(f"DEEPSEEK_MODEL={model}")
-    ENV_FILE.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
-    print(f"\n已写入 {ENV_FILE}")
+    res = apply_llm_settings(api_key=key, base_url=base, model=model)
+    if res["warning"]:
+        print("⚠️ " + res["warning"])
+    print(f"\n已写入 {ENV_FILE}（{'、'.join(res['applied'])}）")
     print("现在可以运行： python -m harness.cli ask \"生物专业可以参加什么竞赛？\"")
     return 0
 
@@ -170,7 +169,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
               "本地覆盖放 data/calc/")
 
     print(f"\nLLM         : {SETTINGS.llm.model} @ {SETTINGS.llm.base_url}")
-    print(f"凭据        : {'✓ 已配置' if SETTINGS.llm.configured else '✗ 未配置 → 运行 cli setup-key'}")
+    print(f"凭据        : {'✓ 已配置' if SETTINGS.llm.configured else '✗ 未配置 → cli setup-key 或 Web 界面「⚙️ 设置」'}")
+    shadowed = env_file_shadowed_keys() & set(LLM_ENV_KEYS + LLM_LEGACY_KEYS)
+    if shadowed:
+        print(f"  ⚠️ 系统环境变量里有 {'、'.join(sorted(shadowed))}，优先级高于 .env"
+              f"（改 .env 不会生效，除非先清掉环境变量）")
     if SETTINGS.llm.configured and not args.no_llm:
         llm = LLM(SETTINGS.llm)
         ok, msg = llm.health()
@@ -239,7 +242,8 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
     dry = bool(getattr(args, "dry_run", False))
     if not SETTINGS.llm.configured and not dry:
-        print("尚未配置 LLM API key。\n请先运行： python -m harness.cli setup-key\n"
+        print("尚未配置 LLM API key。\n两种填法： python -m harness.cli setup-key，"
+              "或在 Web 界面点右上角「⚙️ 设置」\n"
               "（想先不花 token 验证抓取与检索，可加 --dry-run）", file=sys.stderr)
         return 2
 
@@ -559,7 +563,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("setup-key", help="交互式配置 LLM API key（写入 harness/.env）")
+    p = sub.add_parser("setup-key", help="交互式配置 LLM key / 端点 / 模型（写入仓库根 .env）")
     p.add_argument("--key", help="直接传入 key（不回显输入时用）")
     p.add_argument("--base-url", help="OpenAI 兼容端点，默认 https://api.deepseek.com")
     p.add_argument("--model", help="模型名，默认 deepseek-chat")
