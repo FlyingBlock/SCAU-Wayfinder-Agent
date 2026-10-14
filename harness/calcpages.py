@@ -9,8 +9,9 @@
    志愿时长这些量化指标。
 2. **门槛对照** —— 保研 / 考研 / 奖学金逐条门槛的通过情况，以及「要在毕业时
    拿到 X 绩点，剩下每门课要考多少分」的分摊表。
-3. **活动篮** —— 全部可加分活动/竞赛/证书列出来，标上能拿多少分，勾进篮子后
-   右侧实时累加。
+3. **活动篮** —— 具体赛事卡片（《学生竞赛奖励办法》名录里的 110 个赛事，带 T/A/B 级别与
+   加分档位）+ 通用加分项；勾进篮子后右侧实时累加，并可用「🔄 刷新联网」对账官网名录、
+   发现最近还有哪些赛事在报名。
 
 所有计算都在 `harness.calc` 里做，前端只负责渲染，保证和 CLI 口径一致。
 """
@@ -84,6 +85,22 @@ CALC_PAGE = r"""<!DOCTYPE html>
   .pts{font-family:ui-monospace,Consolas,monospace;color:var(--ok);font-weight:600}
   .pts.zero{color:var(--mut);font-weight:400}
   .basis{font-size:12px;color:var(--mut);margin-top:4px;border-left:3px solid var(--bd);padding-left:8px}
+  /* 具体赛事卡片：左侧色条区分「名录内置」与「联网新增」 */
+  .act.comp{border-left:3px solid var(--acc)}
+  .act.comp.online{border-left-color:var(--pri)}
+  .seq{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:20px;
+       padding:0 5px;border-radius:5px;background:var(--soft);border:1px solid var(--bd);
+       font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--mut)}
+  .tier{font-weight:700;font-size:11.5px;padding:1px 8px;border-radius:99px;border:1px solid var(--bd)}
+  .tier.T{color:var(--err);border-color:#f3c0c0;background:var(--errbg)}
+  .tier.A{color:var(--warn);border-color:#eeddaa;background:var(--warnbg)}
+  .tier.B{color:var(--ok);border-color:#b7e0c2;background:var(--okbg)}
+  .clue{border:1px solid var(--bd);border-radius:8px;padding:7px 10px;margin-bottom:6px;background:var(--bg)}
+  .clue .ct{font-weight:600;font-size:13px}
+  .clue .cm{font-size:12px;color:var(--mut);margin-top:2px}
+  .ok-line{font-size:12.5px;color:var(--ok)}
+  .err-line{font-size:12.5px;color:var(--err)}
+  .diffitem{font-size:12.5px;margin-top:4px}
   .basket{position:sticky;top:110px}
   .bl{display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:13px}
   .bl .n{flex:1;min-width:0}
@@ -185,8 +202,27 @@ CALC_PAGE = r"""<!DOCTYPE html>
     <!-- ================= ③ 活动篮 ================= -->
     <section id="tab-acts" class="hide">
       <div class="card">
-        <h2>筛选</h2>
+        <h2>具体赛事名录 <span class="sub" id="comp-sub">加载中…</span></h2>
+        <div class="note" id="comp-basis"></div>
+        <div class="row" style="margin-top:10px;align-items:flex-start">
+          <button id="refresh-online" title="抓取学校官网名录页与竞赛通知栏目，和内置数据对账">🔄 刷新联网</button>
+          <div id="refresh-status" class="sub" style="flex:1;min-width:220px;font-size:12.5px;color:var(--mut)"></div>
+        </div>
+        <div id="comp-online"></div>
+        <details style="margin-top:8px"><summary>数据来源（内置名录页 / 联网抓取清单）</summary>
+          <div id="comp-sources" class="src" style="margin-top:6px"></div></details>
+      </div>
+      <div class="card">
+        <h2>筛选 <span class="sub">默认只看「具体赛事名录」——就是学校文件里点名的那 110 个比赛</span></h2>
         <div class="row">
+          <label class="sub" style="font-size:12.5px;color:var(--mut)">清单
+            <select id="f-kind">
+              <option value="competition">具体赛事名录（内置 + 联网）</option>
+              <option value="general">通用加分项</option>
+              <option value="">全部</option>
+            </select></label>
+          <label class="sub" style="font-size:12.5px;color:var(--mut)">名录附录
+            <select id="f-appendix"><option value="">全部</option></select></label>
           <label class="sub" style="font-size:12.5px;color:var(--mut)">类别
             <select id="f-cat"><option value="">全部</option></select></label>
           <label class="sub" style="font-size:12.5px;color:var(--mut)">级别
@@ -644,7 +680,11 @@ function fillFilters(){
     cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
   $('#f-level').innerHTML = '<option value="">全部级别</option>' +
     lvls.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  ['#f-cat','#f-level','#f-scored'].forEach(s=>$(s).onchange = renderActivities);
+  const apx = ((compMeta()||{}).appendix)||[];
+  $('#f-appendix').innerHTML = '<option value="">全部附录</option>' +
+    apx.filter(a=>a.count).map(a=>
+      `<option value="${a.appendix}">附录${a.appendix} · ${esc(a.tier)} 类（${a.count} 项）</option>`).join('');
+  ['#f-kind','#f-cat','#f-level','#f-appendix','#f-scored'].forEach(s=>$(s).onchange = renderActivities);
   $('#f-q').oninput = renderActivities;
 }
 
@@ -668,72 +708,255 @@ function actBestScore(act){
   return {best, bestAch, bestTuimian, bestAchTuimian};
 }
 
+/* ---------- 名录元信息 / 联网刷新 ---------- */
+function compMeta(){ return (CAT && CAT.competitions) || null; }
+const actKind = a => a.list_kind || 'general';
+const isComp = a => actKind(a)!=='general';
+
+function renderCompetitionHead(){
+  const m = compMeta();
+  if(!m){
+    $('#comp-sub').textContent = '未加载到赛事名录';
+    $('#comp-basis').innerHTML = '仓库自带的 <code>calcdata/competitions.json</code> 没读到，'+
+      '下面只显示 <code>activities.json</code> 里的通用加分项。';
+    $('#comp-sources').innerHTML = '';
+    renderOnlinePanel();
+    return;
+  }
+  const c = m.counts||{}, page = m.catalog_page||{}, online = m.online;
+  $('#comp-sub').innerHTML = `内置 <b>${c.total||0}</b> 项具体赛事：`
+    + `T 类 ${c.T||0} · A 类 ${c.A||0} · B 类 ${c.B||0}`
+    + (c.online_added?` · <span style="color:var(--pri)">联网新增 ${c.online_added}</span>`:'');
+  $('#comp-basis').innerHTML =
+    `${esc(m.disclaimer||'')}<br>`
+    + `名录页：<a href="${esc(page.url||'')}" target="_blank" rel="noopener">${esc(page.title||'')}</a>`
+    + `（${esc(page.published||'')} 发布，${esc(page.site||'')}）<br>`
+    + `加分档位依据：${esc(m.basis||'')}<br>`
+    + `<b>怎么看卡片</b>：每张卡片标题旁是<b>名录序号</b>与<b>名录级别</b>（T/A/B 类），`
+    + `下面「档位」写的是这个赛事用哪张加分表；卡片里的分数全部来自 `
+    + `<code>calcdata/activities.json</code> 已核验的表格行，点「加入活动篮」即可实时累加。`;
+  const links = (m.refresh_sources||[]).map(s=>
+    `<div>· <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a> `
+    + `<span class="chip">${s.kind==='catalog'?'名录页':'通知栏目'}</span> ${esc(s.use||'')}</div>`).join('');
+  $('#comp-sources').innerHTML =
+    `<div>内置数据文件：<code>${esc(m.file||'')}</code>（更新于 ${esc(m.updated||'')}）</div>`
+    + `<div style="margin-top:4px">「🔄 刷新联网」会按顺序抓这些页面：</div>${links}`
+    + `<div style="margin-top:4px">联网结果缓存在 <code>data/cache/calc_competitions.json</code>`
+    + `（不进 git）；断网或官网改版时自动回退到内置数据，计算器照常能用。</div>`;
+  renderOnlinePanel();
+}
+
+function renderOnlinePanel(){
+  const m = compMeta(), box = $('#comp-online'), st = $('#refresh-status');
+  if(!m || !m.online){
+    st.innerHTML = '还没有联网刷新过。点「🔄 刷新联网」抓一次官网，'
+      + '就能看到内置名录有没有更新、以及最近还有哪些赛事在报名。';
+    box.innerHTML = '';
+    return;
+  }
+  const o = m.online, d = o.diff||{}, cnt = o.counts||{};
+  const okN = (o.sources||[]).filter(s=>s.ok).length, allN = (o.sources||[]).length;
+  st.innerHTML = `最近一次联网刷新：<b>${esc(o.fetched_at||'')}</b>`
+    + ` · 抓取成功 ${okN}/${allN} 个页面`
+    + ` · 名录 ${cnt.catalog_total||0} 条`
+    + ((d.added||[]).length?` · <span style="color:var(--pri)">新增 ${d.added.length}</span>`:'')
+    + ` · 通知线索 ${cnt.clues||0} 条`;
+
+  const srcRows = (o.sources||[]).map(s=>{
+    const cls = s.ok?'ok-line':'err-line';
+    const mark = s.ok?'✔':'✘';
+    return `<div class="${cls}">${mark} ${esc(s.title)} `
+      + `<span class="src">HTTP ${s.status||'—'}${s.items?` · ${s.items} 条`:''}`
+      + `${s.elapsed?` · ${s.elapsed}s`:''}${s.error?` · ${esc(s.error)}`:''}</span></div>`;
+  }).join('');
+
+  let diffHtml = '';
+  const dl = (arr, label, fmt)=> (arr&&arr.length)
+    ? `<div class="diffitem"><b>${label} ${arr.length} 项</b>${arr.slice(0,12).map(fmt).join('')}` +
+      `${arr.length>12?`<div class="src">…还有 ${arr.length-12} 项</div>`:''}</div>` : '';
+  if(d.ok){
+    const none = !((d.added||[]).length||(d.removed||[]).length||(d.renamed||[]).length||(d.tier_changed||[]).length);
+    diffHtml = none
+      ? `<div class="ok-line">✔ 与官方名录逐条比对：完全一致，暂无更新。</div>`
+      : `<div class="diffitem"><b>官方名录有变化</b>（联网为准，内置数据可能已过期）</div>`;
+  }else{
+    diffHtml = `<div class="err-line">✘ 名录页没抓成功${d.note?`：${esc(d.note)}`:''}</div>`;
+  }
+  diffHtml += dl(d.added, '新增赛事', x=>
+      `<div>＋ 附录${x.appendix} ${esc(x.tier)} 类 #${x.seq} ${esc(x.name)}</div>`)
+    + dl(d.renamed, '改名', x=>
+      `<div>✎ #${x.seq} ${esc(x.from)} → <b>${esc(x.to)}</b></div>`)
+    + dl(d.removed, '官方已移除', x=>
+      `<div>－ 附录${x.appendix} ${esc(x.tier)} 类 #${x.seq} ${esc(x.name)}</div>`)
+    + dl(d.tier_changed, '级别变化', x=>
+      `<div>⇄ ${esc(x.name)}：${esc(x.from)} → <b>${esc(x.to)}</b></div>`);
+
+  const clues = o.clues||[];
+  const matched = clues.filter(c=>c.matched_name), others = clues.filter(c=>!c.matched_name);
+  const clueCard = c=>`<div class="clue">
+      <div class="ct"><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.title)}</a></div>
+      <div class="cm">${c.pub_date?`${esc(c.pub_date)} · `:''}${esc(c.source||'')}
+        ${c.matched_name?` · <span class="chip">对应名录赛事：${esc(c.matched_name)}</span>`:''}</div>
+    </div>`;
+  const clueHtml = clues.length
+    ? `<div style="margin-top:10px"><b>联网发现的赛事线索</b>
+        <span class="src">（通知栏目里抓到的，用来回答「还有哪些其他活动」；
+        只有名录里的赛事才有加分档位，线索本身不直接加分）</span></div>`
+      + (others.length?`<div class="src" style="margin:6px 0 4px">还没进名录 / 名录外的活动（${others.length} 条，按发布时间倒序）：</div>`
+          + others.slice(0,15).map(clueCard).join(''):'')
+      + (matched.length?`<details style="margin-top:6px"><summary>已对应到名录赛事的通知（${matched.length} 条）</summary>`
+          + matched.slice(0,20).map(clueCard).join('') + `</details>`:'')
+    : '';
+
+  box.innerHTML = `<details open style="margin-top:10px"><summary>联网刷新结果</summary>
+      <div style="margin-top:6px">${srcRows}</div>
+      <div style="margin-top:8px">${diffHtml}</div>
+      ${clueHtml}
+    </details>`;
+}
+
+async function refreshOnline(){
+  const btn = $('#refresh-online'), st = $('#refresh-status');
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '联网抓取中…';
+  st.innerHTML = '<span class="spin"></span> 正在抓取学校官网（名录页 + 竞赛通知栏目），请稍等…';
+  try{
+    const r = await api('/api/calc/activities/refresh', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    CAT = await api('/api/calc/catalog');
+    fillFilters(); renderCompetitionHead(); renderActivities();
+    const c = r.counts||{}, d = r.diff||{};
+    if(r.ok){
+      st.innerHTML = `<span class="ok-line">✔ 联网刷新完成（${esc(r.fetched_at||'')}）：`
+        + `名录 ${c.catalog_total||0} 条`
+        + ((d.added||[]).length?`，<b>官方新增 ${d.added.length} 项</b>`:'')
+        + ((d.renamed||[]).length?`，改名 ${d.renamed.length} 项`:'')
+        + `，通知线索 ${c.clues||0} 条</span>`;
+    }else{
+      st.innerHTML = '<span class="err-line">✘ 自动刷新没抓到可用数据，仍用内置数据。'
+        + '常见原因：不在校园网 / 官网改版 / 代理阻断。可以展开下面的结果看每个源的报错。</span>';
+    }
+  }catch(e){
+    st.innerHTML = `<span class="err-line">✘ 刷新失败：${esc(e.message)}（内置数据不受影响）</span>`;
+  }finally{
+    btn.disabled = false; btn.textContent = old;
+  }
+}
+
+/* ---------- 活动卡片 ---------- */
+function activityCard(a){
+  const best = actBestScore(a);
+  const ex = a.extra||{};
+  const comp = isComp(a);
+  // 通用条目的通道基准分是有意义的（细则按基准分 × 系数算）；
+  // 具体赛事走的是「档位绝对值」，基准分只是展示用，所以这里换成
+  // 「计入综测 / 推免的哪些分项」，避免把基准分误读成能加的分。
+  const chanNames = Object.keys(a.channels||{});
+  const chan = comp
+    ? [['计入综测', chanNames.filter(k=>chanRubric(k)==='综测')],
+       ['计入推免', chanNames.filter(k=>chanRubric(k)==='推免')],
+       ['学分/时长', chanNames.filter(k=>['学分','时长'].includes(chanRubric(k)))]]
+      .filter(([,v])=>v.length)
+      .map(([label,v])=>`<span class="chip">${label}：${v.join('、')}</span>`).join('')
+    : chanNames.map(k=>{
+        const neg = (a.channels[k]||0) < 0;
+        return `<span class="chip">${esc(k)} ${neg?'':'基准 '}${n2(a.channels[k],2)}${esc(chanUnit(k))}</span>`;
+      }).join('');
+  const ach = (a.achievements||[]).map(x=>{
+    const per = ((a.preview||{})[x]||{}).channels || {};
+    const zc = fmtChannels(per, '综测');
+    const tm = fmtChannels(per, '推免');
+    const other = fmtChannels(per, '学分') + ' ' + fmtChannels(per, '时长');
+    const pZc = Object.keys(per).some(k=>chanRubric(k)==='综测');
+    const pTm = Object.keys(per).some(k=>chanRubric(k)==='推免');
+    const pOther = Object.keys(per).some(k=>['学分','时长'].includes(chanRubric(k)));
+    let body = '';
+    if(pZc) body += `综测：${zc}`;
+    if(pTm) body += `${body?'<br>':''}推免：${tm}`;
+    if(pOther) body += `${body?'<br>':''}${other}`;
+    const title = (pZc && pTm)
+      ? '综测与推免是两套评分表，同一件事分值不同' : '';
+    return `<span class="chip" ${title?`title="${title}"`:''}>${esc(x)}<br>${body}</span>`;
+  }).join('');
+  const added = state.basket.some(b=>b.activity_id===a.id);
+  const noChannel = !Object.keys(a.channels||{}).length;
+  const nameCode = comp && ex.seq!=null
+    ? `<span class="seq" title="名录序号">#${ex.seq}</span>` : '';
+  const tierChip = comp
+    ? `<span class="tier ${esc(ex.tier||'')}" title="${esc(ex.appendix_title||'')}">${esc(ex.tier_label||'')}</span>`
+    : '';
+  const meta = comp
+    ? `<div class="m">附录${ex.appendix||''} · ${esc(ex.appendix_title||'')}`
+      + `${ex.raw_name && ex.raw_name!==a.name?`　名录原名：${esc(ex.raw_name)}`:''}</div>`
+      + `<div class="m">加分档位：<b>${esc(ex.profile_label||ex.profile||'')}</b>`
+      + `${ex.online?` · <span style="color:var(--pri)">联网新增（${esc(ex.confirmed_at||'')}）</span>`:''}</div>`
+    : '';
+  return `<div class="act ${comp?'comp':''} ${ex.online?'online':''}">
+    <div class="t">${nameCode}${esc(a.name)}
+      ${tierChip}
+      ${a.level&&!comp?`<span class="chip">${esc(a.level)}</span>`:''}
+      ${a.category&&!comp?`<span class="chip">${esc(a.category)}</span>`:''}
+      ${noChannel?`<span class="pill warn" style="font-size:11.5px">提示信息（不直接加分）</span>`
+        : best.best>0?`<span class="pill ok" style="font-size:11.5px">综测最高 +${n2(best.best,2)} 分</span>`
+        :`<span class="pill warn" style="font-size:11.5px">加分值未证实</span>`}
+      ${best.bestTuimian>0?`<span class="pill pri" style="font-size:11.5px">推免最高 +${n2(best.bestTuimian,2)} 分</span>`:''}
+      <span style="margin-left:auto"></span>
+      ${noChannel?'':`<button class="mini ${added?'ghost':''}" data-add="${esc(a.id)}">${added?'已在篮中':'加入活动篮'}</button>`}
+    </div>
+    ${meta}
+    ${a.organizer?`<div class="m">主办：${esc(a.organizer)}</div>`:''}
+    ${a.timing?`<div class="m">时间：${esc(a.timing)}</div>`:''}
+    ${a.eligibility?`<div class="m">资格：${esc(a.eligibility)}</div>`:''}
+    <div class="ach">${chan}</div>
+    ${ach?`<div class="ach" style="align-items:stretch">${ach}</div>`:''}
+    ${a.note?`<div class="meta">${esc(a.note)}</div>`:''}
+    ${a.source?`<div class="basis">加分依据：${esc(a.source)}${a.confidence&&a.confidence!=='verified'?`（可信度：${esc(a.confidence)}）`:''}</div>`:''}
+    ${a.url?`<div class="basis"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.url)}</a></div>`:''}
+  </div>`;
+}
+
 function renderActivities(){
+  const kind = $('#f-kind').value;
+  const appendix = $('#f-appendix').value;
   const cat = $('#f-cat').value, lvl = $('#f-level').value;
   const q = $('#f-q').value.trim().toLowerCase();
   const onlyScored = $('#f-scored').checked;
-  const list = (CAT.activities||[]).filter(a=>{
+  let list = (CAT.activities||[]).filter(a=>{
+    const k = actKind(a);
+    if(kind==='competition' && k==='general') return false;
+    if(kind==='general' && k!=='general') return false;
+    const ex = a.extra||{};
+    if(appendix && String(ex.appendix||'')!==appendix) return false;
     if(cat && a.category!==cat) return false;
     if(lvl && a.level!==lvl) return false;
     const {best} = actBestScore(a);
     if(onlyScored && best<=0) return false;
     if(q){
       const hay = [a.name,a.category,a.level,a.organizer,a.note,a.eligibility,
+                   ex.raw_name, ex.tier_label, ex.profile_label, ex.appendix_title,
                    (a.tags||[]).join(' '), Object.keys(a.channels||{}).join(' ')]
                    .join(' ').toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
   });
-  $('#act-count').textContent = `共 ${list.length} 项 / 全部 ${CAT.activities.length} 项`;
-
-  $('#act-list').innerHTML = list.map(a=>{
-    const best = actBestScore(a);
-    const hasZc = Object.keys(a.channels||{}).some(k=>chanRubric(k)==='综测');
-    const hasTm = Object.keys(a.channels||{}).some(k=>chanRubric(k)==='推免');
-    const chan = Object.entries(a.channels||{}).map(([k,v])=>{
-      const neg = v < 0;
-      return `<span class="chip">${esc(k)} ${neg?'':'基准 '}${n2(v,2)}${esc(chanUnit(k))}</span>`;
-    }).join('');
-    const ach = (a.achievements||[]).map(x=>{
-      const per = ((a.preview||{})[x]||{}).channels || {};
-      const zc = fmtChannels(per, '综测');
-      const tm = fmtChannels(per, '推免');
-      const other = fmtChannels(per, '学分') + ' ' + fmtChannels(per, '时长');
-      const pZc = Object.keys(per).some(k=>chanRubric(k)==='综测');
-      const pTm = Object.keys(per).some(k=>chanRubric(k)==='推免');
-      const pOther = Object.keys(per).some(k=>['学分','时长'].includes(chanRubric(k)));
-      let body = '';
-      if(pZc) body += `综测：${zc}`;
-      if(pTm) body += `${body?'<br>':''}推免：${tm}`;
-      if(pOther) body += `${body?'<br>':''}${other}`;
-      const title = (pZc && pTm)
-        ? '综测与推免是两套评分表，同一件事分值不同' : '';
-      return `<span class="chip" ${title?`title="${title}"`:''}>${esc(x)}<br>${body}</span>`;
-    }).join('');
-    const added = state.basket.some(b=>b.activity_id===a.id);
-    const noChannel = !Object.keys(a.channels||{}).length;
-    return `<div class="act">
-      <div class="t">${esc(a.name)}
-        ${a.level?`<span class="chip">${esc(a.level)}</span>`:''}
-        ${a.category?`<span class="chip">${esc(a.category)}</span>`:''}
-        ${noChannel?`<span class="pill warn" style="font-size:11.5px">提示信息（不直接加分）</span>`
-          : best.best>0?`<span class="pill ok" style="font-size:11.5px">综测最高 +${n2(best.best,2)} 分</span>`
-          :`<span class="pill warn" style="font-size:11.5px">加分值未证实</span>`}
-        ${best.bestTuimian>0?`<span class="pill pri" style="font-size:11.5px">推免最高 +${n2(best.bestTuimian,2)} 分</span>`:''}
-        <span style="margin-left:auto"></span>
-        ${noChannel?'':`<button class="mini ${added?'ghost':''}" data-add="${esc(a.id)}">${added?'已在篮中':'加入活动篮'}</button>`}
-      </div>
-      ${a.organizer?`<div class="m">主办：${esc(a.organizer)}</div>`:''}
-      ${a.timing?`<div class="m">时间：${esc(a.timing)}</div>`:''}
-      ${a.eligibility?`<div class="m">资格：${esc(a.eligibility)}</div>`:''}
-      <div class="ach">${chan}</div>
-      ${ach?`<div class="ach" style="align-items:stretch">${ach}</div>`:''}
-      ${a.note?`<div class="meta">${esc(a.note)}</div>`:''}
-      ${a.source?`<div class="basis">加分依据：${esc(a.source)}${a.confidence&&a.confidence!=='verified'?`（可信度：${esc(a.confidence)}）`:''}</div>`:''}
-      ${a.url?`<div class="basis"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.url)}</a></div>`:''}
-    </div>`;
-  }).join('') || '<div class="card"><div class="note">没有符合筛选条件的活动。</div></div>';
+  // 具体赛事按「附录 + 名录序号」排（跟官方名录一个顺序），通用加分项排后面
+  const idx = new Map((CAT.activities||[]).map((a,i)=>[a.id,i]));
+  list = list.slice().sort((a,b)=>{
+    const ca = isComp(a)?0:1, cb = isComp(b)?0:1;
+    if(ca!==cb) return ca-cb;
+    if(ca===0){
+      const ea=a.extra||{}, eb=b.extra||{};
+      return ((ea.appendix||0)-(eb.appendix||0)) || ((ea.seq||0)-(eb.seq||0));
+    }
+    return (idx.get(a.id)||0)-(idx.get(b.id)||0);
+  });
+  const compN = list.filter(isComp).length;
+  $('#act-count').textContent = `共 ${list.length} 项`
+    + (compN?`（具体赛事 ${compN}）`:'')
+    + ` / 全部 ${CAT.activities.length} 项`;
+  $('#act-list').innerHTML = list.map(activityCard).join('')
+    || '<div class="card"><div class="note">没有符合筛选条件的活动。</div></div>';
 
   $$('#act-list button[data-add]').forEach(b=>{
     b.onclick = ()=>{
@@ -764,6 +987,36 @@ function renderRules(){
   const rkR = disc? Object.entries(disc.rank_ratios||{}).map(([k,v])=>`<span class="chip">${esc(k)} ×${v}</span>`).join('') : '';
   const srcs = (CAT.sources||[]).map(s=>`<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a> —— ${esc(s.use)}</li>`).join('');
   const warns = (CAT.warnings||[]).map(esc).join('<br>');
+  const cm = CAT.competitions || null;
+  const compCard = !cm ? '' : `
+  <div class="card"><h2>具体赛事名录 <span class="sub">活动篮里那 ${cm.counts.total} 张赛事卡片是怎么来的</span></h2>
+    <div class="note">${esc(cm.disclaimer||'')}</div>
+    <table><thead><tr><th style="width:90px">附录</th><th style="width:70px">级别</th>
+      <th style="width:70px">数量</th><th>名录内容</th></tr></thead>
+      <tbody>${(cm.appendix||[]).map(a=>`<tr>
+        <td>附录${a.appendix}</td><td><span class="tier ${esc(a.tier)}">${esc(a.tier)} 类</span></td>
+        <td class="num">${a.count}</td>
+        <td>${esc(a.title)}<div class="src">${esc(a.subtitle)} · ${esc(a.organizer)}</div></td></tr>`).join('')}
+      </tbody></table>
+    <h2 style="font-size:13px;margin:14px 0 6px;color:var(--mut)">加分档位（每个赛事用哪张表）</h2>
+    <table><thead><tr><th style="width:230px">档位</th><th style="width:200px">成果档位与分值（综测 / 推免）</th><th>说明</th></tr></thead>
+    <tbody>${Object.entries(cm.profiles||{}).map(([k,p])=>`<tr>
+      <td><b>${esc(p.label||k)}</b><div class="src">${esc(p.confidence||'')}</div></td>
+      <td class="src">${Object.entries(p.achieve_map||{}).map(([ach,v])=>
+          `${esc(ach)}：${typeof v==='object'?n2(v['综测'],2)+' / '+n2(v['推免'],2):n2(v,2)}`).join('<br>')}</td>
+      <td class="src">${esc(p.note||'')}<br><b>分值出处</b>：${esc(p.source||'')}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="note">
+      <b>内置 vs 联网</b>：内置名录来自 <code>calcdata/competitions.json</code>，
+      源头是 <a href="${esc((cm.catalog_page||{}).url||'')}" target="_blank" rel="noopener">${esc((cm.catalog_page||{}).title||'')}</a>
+      （${esc((cm.catalog_page||{}).published||'')} 发布）。点「活动篮」页的「🔄 刷新联网」会重新抓这张名录页
+      与几个竞赛通知栏目，逐条对账（新增 / 改名 / 级别变化 / 官方移除），结果缓存在
+      <code>data/cache/calc_competitions.json</code>；联网失败或官网改版时自动回退到内置数据，
+      <b>计算器不联网也能用</b>。<br>
+      联网抓取清单：${(cm.refresh_sources||[]).map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>`).join('、')}
+    </div>
+  </div>
+`;
 
   $('#rules-body').innerHTML = `
   <div class="card"><h2>绩点折算表 <span class="sub">${esc(t.name)} · 上限 ${n2(t.max_gp,1)}</span></h2>
@@ -796,6 +1049,8 @@ function renderRules(){
     <div class="note">单次得分 = 基准分 × 级别系数 × 名次系数 × 份数。<br>
       若某份细则把分值写死了，把该活动的 <code>discount</code> 设为 <code>none</code> 即可跳过系数。</div>
   </div>
+
+  ${compCard}
 
   <div class="card"><h2>数据口径与出处</h2>
     <ul>${srcs}</ul>
@@ -833,6 +1088,7 @@ function bindTop(){
     state.scores = {}; state.retakes = []; save(); renderCourses(); scheduleEval(60);
   };
   $('#basket-clear').onclick = ()=>{ state.basket = []; save(); renderActivities(); scheduleEval(40); };
+  $('#refresh-online').onclick = refreshOnline;
   $('#export').onclick = ()=>{
     const blob = new Blob([JSON.stringify({state, result:LAST}, null, 2)], {type:'application/json'});
     const a = document.createElement('a');
@@ -881,6 +1137,7 @@ async function boot(){
   renderCourses();
   renderMetrics();
   fillFilters();
+  renderCompetitionHead();
   renderActivities();
   renderRules();
   bindTop();
@@ -922,7 +1179,7 @@ CALC_DOCS_PAGE = r"""<!DOCTYPE html>
 <main>
 <div class="card">
   <h2>为什么要写这一页</h2>
-  <p>这个计算器的每一个数字都来自 <code>calcdata/</code> 下的四个 JSON 文件，代码里<b>不含任何学校特有的数字</b>。
+  <p>这个计算器的每一个数字都来自 <code>calcdata/</code> 下的五个 JSON 文件，代码里<b>不含任何学校特有的数字</b>。
   所以你可以直接打开那些文件核对、修改，改完刷新页面立刻生效。</p>
   <div class="warn"><b>重要：这些数值是规划用的，不是学籍依据。</b>
   培养方案的课程学分、综测的权重与加分表，各学院、各年份都可能不同。
@@ -931,16 +1188,42 @@ CALC_DOCS_PAGE = r"""<!DOCTYPE html>
 </div>
 
 <div class="card">
-  <h2>四个数据文件分别管什么</h2>
+  <h2>五个数据文件分别管什么</h2>
   <table>
     <thead><tr><th style="width:190px">文件</th><th>内容</th></tr></thead>
     <tbody>
       <tr><td><code>rules.json</code></td><td>百分制→绩点的折算表、重修口径、综测各分项与权重、加分路由、级别/名次折算系数、出处清单</td></tr>
       <tr><td><code>majors.json</code></td><td>专业培养方案：学分构成、逐门课程的代码/名称/学分/开课学期/是否计绩点/是否计排名</td></tr>
       <tr><td><code>goals.json</code></td><td>保研、考研、各类奖学金的门槛：每一条写成 <code>{metric, op, value}</code></td></tr>
-      <tr><td><code>activities.json</code></td><td>可加分活动与竞赛清单：类别、级别、主办方、加分通道与基准分、报名时间、加分依据出处</td></tr>
+      <tr><td><code>activities.json</code></td><td>通用加分项清单：类别、级别、主办方、加分通道与基准分、报名时间、加分依据出处</td></tr>
+      <tr><td><code>competitions.json</code></td><td>具体赛事名录：逐条赛事（T 84 / A 16 / B 10）+ 每个赛事的加分档位模板；「活动篮」页上那些赛事卡片就是它展开出来的</td></tr>
     </tbody>
   </table>
+  <p>另外 <code>data/cache/calc_competitions.json</code>（不进 git）存的是「🔄 刷新联网」的结果：
+  联网抓到的官方名录、与内置数据的差异、以及通知栏目里的赛事线索。删掉它不影响使用，只会少一次联网结果。</p>
+</div>
+
+<div class="card">
+  <h2>具体赛事是怎么算分的</h2>
+  <p>《华南农业大学学生竞赛奖励办法》（华南农办〔2022〕38号）的附件《学科竞赛名录》只界定
+  <b>某个赛事属于 T / A / B 哪一类</b>；具体加多少分来自学院细则。所以工具把两者拆开：</p>
+  <table>
+    <thead><tr><th style="width:170px">名录附录</th><th style="width:70px">级别</th><th>赛事举例</th></tr></thead>
+    <tbody>
+      <tr><td>附录1 教育部中国高等教育学会科技竞赛名录</td><td>T 类</td><td>中国国际「互联网＋」大学生创新创业大赛、「挑战杯」、全国大学生数学建模竞赛、全国大学生生命科学竞赛…（84 项）</td></tr>
+      <tr><td>附录2 研究生创新实践系列大赛</td><td>A 类</td><td>中国研究生数学建模竞赛、中国研究生人工智能创新大赛…（16 项，主要面向研究生）</td></tr>
+      <tr><td>附录3 广东省本科高校大学生十大学科竞赛</td><td>B 类</td><td>广东省大学生生物化学实验技能大赛、全国大学生数学建模竞赛广东省分赛…（10 项）</td></tr>
+    </tbody>
+  </table>
+  <p>每个赛事挂一个<b>加分档位</b>（见「④ 计算口径 → 具体赛事名录」）：互联网+/挑战杯走创新创业类比赛表（T1 档），
+  生物类 T 类赛事走团体项目 T2 档，其余 T 类按学院细则注「非生物类按 50% 折算」，A/B 类各走各的档。
+  <b>档位里的每个数字都抄自 <code>activities.json</code> 里已核验的表格行</b>，工具不发明新分值；
+  「某个赛事该归哪一档」属于组合口径，所以名录类活动的可信度统一标 <code>provisional</code>，
+  卡片上都写着档位依据和名录出处。你可以在 <code>competitions.json</code> 里改某一条的 <code>profile</code> 来调整归类。</p>
+  <p><b>「🔄 刷新联网」做什么：</b>抓上面那张名录页 + 几个竞赛通知栏目（校团委挑战杯、创新创业学院通知、
+  生命科学学院学生通知、学工部本科生通知），然后 ① 把抓到的名录与内置数据逐条对账，报出新增 / 改名 /
+  级别变化 / 官方移除，新增的赛事自动挂上对应档位；② 从通知标题里提炼「还有哪些活动在报名」的线索卡片。
+  <b>全程不调用模型、不需要 API key</b>；断网或官网改版时自动回退到内置数据并说明原因。</p>
 </div>
 
 <div class="card">
@@ -1052,6 +1335,8 @@ CALC_DOCS_PAGE = r"""<!DOCTYPE html>
     <li>改完记得把该专业的 <code>total_credits</code> 改成课程学分合计（校验器会提示不一致）；</li>
     <li>找到本学院当年的《综合素质测评实施细则》，把权重改到 <code>rules.json</code> 的
         <code>comprehensive.dimensions</code>，把加分明细填到 <code>activities.json</code>；</li>
+    <li>把 <code>competitions.json</code> 里各赛事的 <code>profile</code> 改成你学院细则对应的档位
+        （或整条换成你学院名录里的赛事）；改完点一下「🔄 刷新联网」，官方名录的新增赛事会自动补上；</li>
     <li>把每一条的 <code>confidence</code> 从 <code>provisional</code> 改成 <code>verified</code>，
         并在 <code>source</code> 里写上文件标题和链接。</li>
   </ol>

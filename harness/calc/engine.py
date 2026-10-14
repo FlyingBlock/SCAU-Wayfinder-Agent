@@ -81,13 +81,18 @@ class Calculator:
 
     def catalog(self) -> dict:
         """一次性给前端所有静态数据：专业、课程、规则、门槛、活动、指标。"""
+        # preview_all() 一次算完所有活动的档位预览，不要放进逐条循环里
+        # （赛事名录展开后活动有 150+ 条，逐条再算一遍就是 O(n²)）。
+        preview = self.basket.preview_all()
         return {
             "majors": [self._major_json(m) for m in self.data.majors],
             "goals": [self._goal_json(g) for g in self.data.goals],
-            "activities": [self._activity_json(a) for a in self.data.activities],
+            "activities": [self._activity_json(a, preview) for a in self.data.activities],
             "categories": sorted({a.category for a in self.data.activities if a.category}),
             "levels": sorted({a.level for a in self.data.activities if a.level}),
             "channels": sorted({c for a in self.data.activities for c in a.channels}),
+            # 赛事名录的元信息（名录页出处、附录构成、加分档位、联网刷新状态…）
+            "competitions": self.data.competitions or None,
             "metrics": [
                 {"key": m.key, "label": m.label, "unit": m.unit, "kind": m.kind,
                  "fillable": m.fillable, "hint": m.hint,
@@ -179,8 +184,10 @@ class Calculator:
             ],
         }
 
-    def _activity_json(self, a: Activity) -> dict:
-        preview = self.basket.preview_all().get(a.id, {})
+    def _activity_json(self, a: Activity, preview: dict | None = None) -> dict:
+        preview = (preview or {}).get(a.id)
+        if preview is None:
+            preview = self.basket.preview_all().get(a.id, {})
         return {
             "id": a.id, "name": a.name, "category": a.category, "level": a.level,
             "organizer": a.organizer, "channels": a.channels,
@@ -188,6 +195,7 @@ class Calculator:
             "discount": a.discount, "timing": a.timing,
             "eligibility": a.eligibility, "url": a.url, "source": a.source,
             "confidence": a.confidence, "note": a.note, "tags": a.tags,
+            "list_kind": a.list_kind, "extra": a.extra,
             "achievements": a.achievements(),
             "preview": preview,
             "rubric": {ch: self.basket.rubric_of(ch) for ch in a.channels},

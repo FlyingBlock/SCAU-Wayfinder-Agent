@@ -16,6 +16,7 @@
 | `majors.json`     | 专业培养方案（课程、学分构成） |
 | `goals.json`      | 保研 / 考研 / 奖学金门槛 |
 | `activities.json` | 可加分活动与竞赛清单 |
+| `competitions.json` | 《学生竞赛奖励办法》名录里的**具体赛事**（可选增强） |
 
 **放在哪**：默认读仓库根的 `calcdata/`（会进 git，所以 clone 下来就有）。
 如果 `data/calc/` 下存在同名文件，**优先用那一份** —— 那个目录在
@@ -28,6 +29,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import competitions as competitions_mod
 from .model import (
     Activity,
     Course,
@@ -47,8 +49,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DIR = REPO_ROOT / "calcdata"
 OVERRIDE_DIR = REPO_ROOT / "data" / "calc"
 
-# 需要读的四个文件
+# 需要读的四个文件（赛事名录是可选增强，缺了只报警告）
 _DATA_FILES = ("rules.json", "majors.json", "goals.json", "activities.json")
+_OPTIONAL_FILES = ("competitions.json",)
 
 
 class CalcDataError(RuntimeError):
@@ -63,6 +66,8 @@ class CalcData:
     activities: list[Activity] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # 赛事名录的元信息（名录页出处、附录构成、联网刷新状态…），前端要用
+    competitions: dict = field(default_factory=dict)
 
     def major(self, major_id: str) -> Major | None:
         for m in self.majors:
@@ -255,6 +260,8 @@ def load_calc_data(directory: str | Path | None = None,
             data.warnings.append(msg)
             return data
         picked = {name: base / name for name in _DATA_FILES}
+        # 显式目录下也接受可选的赛事名录（没有就不加载）
+        picked["competitions.json"] = base / "competitions.json"
 
     else:
         picked = {}
@@ -267,6 +274,7 @@ def load_calc_data(directory: str | Path | None = None,
                 picked[name] = default
             else:
                 picked[name] = default      # 交给下面的 load() 报错
+        picked["competitions.json"] = competitions_mod.default_path()
 
     data = CalcData()
     missing: list[str] = []
@@ -304,6 +312,19 @@ def load_calc_data(directory: str | Path | None = None,
     acts_raw = load("activities.json")
     if acts_raw:
         data.activities = _load_activities(acts_raw)
+
+    # 具体赛事名录（可选增强）：展开成 Activity 追加到清单里。
+    # 用 **当前目录下** 的 competitions.json（显式目录或 data/calc/ 覆盖优先），
+    # 联网刷新的缓存则固定读 data/cache/calc_competitions.json。
+    comp_raw, comp_warnings = competitions_mod.load_competitions(picked["competitions.json"])
+    data.warnings.extend(comp_warnings)
+    if comp_raw:
+        online = competitions_mod.load_online_cache()
+        acts, comp_meta, warns = competitions_mod.build_activities(comp_raw, online)
+        data.activities.extend(acts)
+        data.competitions = comp_meta
+        data.warnings.extend(warns)
+        picked["online_cache"] = Path(competitions_mod.ONLINE_CACHE)
 
     if missing:
         msg = ("缺少计算器数据文件：" + "、".join(missing)

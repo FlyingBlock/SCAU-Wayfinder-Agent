@@ -276,6 +276,12 @@ class Activity:
     confidence: str = ""
     note: str = ""
     tags: list[str] = field(default_factory=list)
+    # 清单归属：general=activities.json 里的通用条目；
+    # competition=《学生竞赛奖励办法》名录里的具体赛事（内置）；
+    # competition-online=联网刷新后新发现的赛事。前端据此分组与筛选。
+    list_kind: str = "general"
+    # 名录类活动的附加上下文（序号/附录/档位/是否联网来源…），仅用于展示。
+    extra: dict = field(default_factory=dict)
 
     @property
     def channel_names(self) -> list[str]:

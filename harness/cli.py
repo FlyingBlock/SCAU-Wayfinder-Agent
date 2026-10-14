@@ -475,33 +475,66 @@ def cmd_goals(args: argparse.Namespace) -> int:
 def cmd_activities(args: argparse.Namespace) -> int:
     from .calc import Calculator
 
+    if getattr(args, "refresh", False):
+        rc = cmd_competitions_refresh(args)
+        if rc != 0:
+            return rc
+
     calc = Calculator()
     preview = calc.basket.preview_all()
+    kind = getattr(args, "list", "all") or "all"
+    counts = (calc.data.competitions or {}).get("counts") or {}
     print("=" * 74)
     print(f"可加分活动清单：共 {len(calc.activities)} 项"
-          f"（下面列的是各项最高可能得分）")
+          + (f"（其中具体赛事 {counts.get('total', 0)} 项："
+             f"T {counts.get('T', 0)} / A {counts.get('A', 0)} / B {counts.get('B', 0)}"
+             + (f"，联网新增 {counts['online_added']} 项" if counts.get("online_added") else "")
+             + "）" if counts else ""))
+    print("（下面列的是各项最高可能得分）")
     print("=" * 74)
 
     rows = []
     for act in calc.activities:
+        if kind == "competition" and act.list_kind == "general":
+            continue
+        if kind == "general" and act.list_kind != "general":
+            continue
         if args.category and act.category != args.category:
             continue
         if args.level and act.level != args.level:
             continue
         best, best_ach = 0.0, ""
+        best_tm, best_ach_tm = 0.0, ""
         for ach, info in (preview.get(act.id) or {}).items():
             if info["total"] > best:
                 best, best_ach = info["total"], ach
-        if args.scored_only and best <= 0:
+            if info.get("total_tuimian", 0) > best_tm:
+                best_tm, best_ach_tm = info["total_tuimian"], ach
+        if args.scored_only and best <= 0 and best_tm <= 0:
             continue
-        rows.append((act, best, best_ach))
+        rows.append((act, best, best_ach, best_tm, best_ach_tm))
 
-    for act, best, best_ach in sorted(rows, key=lambda r: -r[1]):
+    # 具体赛事按名录序号排（跟官方名录同序），通用加分项按分值排
+    if kind == "competition":
+        rows.sort(key=lambda r: (r[0].extra.get("appendix", 0),
+                                 r[0].extra.get("seq", 0)))
+    else:
+        rows.sort(key=lambda r: -max(r[1], r[3]))
+
+    for act, best, best_ach, best_tm, best_ach_tm in rows:
         flag = {"verified": "✓", "provisional": "~",
                 "unverified": "?", "adjustable": "*"}.get(act.confidence, " ")
-        print(f"\n[{flag}] {act.name}")
-        print(f"    类别 {act.category}｜级别 {act.level}"
-              f"｜最高 +{best:g} 分（{best_ach}）")
+        ex = act.extra or {}
+        head = ""
+        if act.list_kind != "general" and ex.get("seq") is not None:
+            head = f"#{ex['seq']} [{ex.get('tier', '')} 类·附录{ex.get('appendix', '')}] "
+        print(f"\n[{flag}] {head}{act.name}")
+        score = f"最高 综测 +{best:g} 分（{best_ach}）"
+        if best_tm > 0:
+            score += f"｜推免 +{best_tm:g} 分（{best_ach_tm}）"
+        print(f"    类别 {act.category}｜级别 {act.level}｜{score}"
+              + (f"｜档位 {ex.get('profile_label', '')}" if ex.get("profile_label") else "")
+              + ("｜联网新增" if ex.get("online") else ""))
         if act.organizer:
             print(f"    主办：{act.organizer}")
         if act.timing:
@@ -515,6 +548,56 @@ def cmd_activities(args: argparse.Namespace) -> int:
     print("可信度标记：✓ 已核验分值  ~ 有依据未逐条核验  ? 加分值未证实  * 估算值")
     print("=" * 74)
     return 0
+
+
+def cmd_competitions_refresh(args: argparse.Namespace) -> int:
+    """联网刷新赛事名录（活动篮页面上那个「🔄 刷新联网」的命令行版本）。"""
+    from .calc import online as calc_online
+
+    print("=" * 74)
+    print("刷新赛事名录（抓学校官网 → 与内置 calcdata/competitions.json 对账）")
+    print("=" * 74)
+    res = calc_online.refresh(timeout=int(getattr(args, "timeout", 12) or 12))
+    for s in res.get("sources", []):
+        mark = "✔" if s.get("ok") else "✘"
+        print(f"  {mark} [{s.get('kind')}] {s.get('title')}"
+              f"  HTTP {s.get('status')} · {s.get('items', 0)} 条"
+              f" · {s.get('elapsed', 0)}s"
+              + (f" · {s.get('error')}" if s.get("error") else ""))
+    cnt = res.get("counts") or {}
+    print(f"\n  名录：T {cnt.get('T', 0)} / A {cnt.get('A', 0)} / B {cnt.get('B', 0)}"
+          f"（共 {cnt.get('catalog_total', 0)} 条）"
+          + ("　⚠️ 未抓到名录页，沿用上次缓存" if not res.get("catalog_ok") else ""))
+    d = res.get("diff") or {}
+    if d.get("note"):
+        print(f"  对账：{d['note']}")
+    for key, label in (("added", "新增"), ("renamed", "改名"),
+                       ("removed", "官方移除"), ("tier_changed", "级别变化")):
+        items = d.get(key) or []
+        for x in items[:10]:
+            if key == "added":
+                print(f"  ＋ 附录{x.get('appendix')} {x.get('tier')} 类 "
+                      f"#{x.get('seq')} {x.get('name')}")
+            elif key == "renamed":
+                print(f"  ✎ #{x.get('seq')} {x.get('from')} → {x.get('to')}")
+            elif key == "removed":
+                print(f"  － 附录{x.get('appendix')} {x.get('tier')} 类 "
+                      f"#{x.get('seq')} {x.get('name')}")
+            else:
+                print(f"  ⇄ {x.get('name')}：{x.get('from')} → {x.get('to')}")
+        if len(items) > 10:
+            print(f"     …{label}共 {len(items)} 项")
+    clues = res.get("clues") or []
+    if clues:
+        print(f"\n  通知线索（还有哪些活动在报名，共 {len(clues)} 条，最新在前）：")
+        for c in clues[:12]:
+            print(f"    · {c.get('pub_date') or '日期未知'} {c.get('title')}"
+                  + (f"　[对应名录：{c.get('matched_name')}]"
+                     if c.get("matched_name") else "")
+                  + f"\n      {c.get('url')}")
+    print(f"\n  缓存：{res.get('cache_path')}")
+    print("=" * 74)
+    return 0 if res.get("ok") else 1
 
 
 def cmd_calc(args: argparse.Namespace) -> int:
@@ -533,6 +616,24 @@ def cmd_calc(args: argparse.Namespace) -> int:
           + "、".join(g2.name for g2 in calc.goals[:4])
           + ("…）" if len(calc.goals) > 4 else "）"))
     print(f"  活动      : {len(calc.activities)} 项")
+    comp = calc.data.competitions or {}
+    if comp:
+        c = comp.get("counts") or {}
+        page = comp.get("catalog_page") or {}
+        print(f"  具体赛事  : {c.get('total', 0)} 项"
+              f"（T {c.get('T', 0)} / A {c.get('A', 0)} / B {c.get('B', 0)}）"
+              f"，来自 {page.get('title', '')}")
+        on = (comp.get("online") or {})
+        if on:
+            d = on.get("diff") or {}
+            print(f"  联网刷新  : {on.get('fetched_at', '')}"
+                  f"｜名录 {((on.get('counts') or {}).get('catalog_total', 0))} 条"
+                  f"｜新增 {len(d.get('added') or [])}"
+                  f"｜改名 {len(d.get('renamed') or [])}"
+                  f"｜线索 {len(on.get('clues') or [])} 条")
+        else:
+            print("  联网刷新  : 还没刷新过（计算器页「活动篮」→🔄 刷新联网，"
+                  "或 cli competitions）")
     print(f"  绩点折算  : {g.name}，上限 {g.max_gp:g}，"
           f"{len(g.bands)} 个区间，不及格线 {g.fail_score:g}")
     print(f"  重修口径  : {g.retake_policy}，封顶 {g.retake_cap:g} 绩点")
@@ -842,7 +943,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--category", default="", help="只看某个类别")
     p.add_argument("--level", default="", help="只看某个级别")
     p.add_argument("--scored-only", action="store_true", help="只看有分值依据的")
+    p.add_argument("--list", choices=["competition", "general", "all"], default="all",
+                   help="清单范围：competition=《学生竞赛奖励办法》名录里的具体赛事，"
+                        "general=通用加分项，all=全部（默认）")
+    p.add_argument("--refresh", action="store_true",
+                   help="先联网刷新赛事名录（抓官网 → 与内置数据对账）再打印")
+    p.add_argument("--timeout", type=int, default=12, help="联网刷新的单页超时秒数")
     p.set_defaults(func=cmd_activities)
+
+    p = sub.add_parser("competitions",
+                       help="刷新《学生竞赛奖励办法》赛事名录（联网抓官网并和内置数据对账）")
+    p.add_argument("--timeout", type=int, default=12, help="单页超时秒数")
+    p.set_defaults(func=cmd_competitions_refresh)
 
     p = sub.add_parser("calc", help="计算器数据自检：专业/课程/门槛/活动/口径")
     p.set_defaults(func=cmd_calc)

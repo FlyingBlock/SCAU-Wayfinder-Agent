@@ -498,6 +498,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/calc/evaluate":
                 self._calc_evaluate()
+            elif path == "/api/calc/activities/refresh":
+                self._calc_activities_refresh()
             elif path == "/api/settings/llm":
                 self._settings_save()
             elif path == "/api/settings/llm/test":
@@ -700,6 +702,35 @@ class Handler(BaseHTTPRequestHandler):
 
     def _calc_catalog(self) -> None:
         self._json(self._calculator().catalog())
+
+    def _calc_activities_refresh(self) -> None:
+        """「活动篮」页的『🔄 刷新联网』。
+
+        抓《学生竞赛奖励办法》名录页与几个竞赛通知栏目，和内置名录对账，把结果
+        缓存到 data/cache/，然后由前端重新拉一次 /api/calc/catalog 生效。
+        抓取失败不算错误状态：返回 ok=False + 每个源的错误原因，页面继续用内置数据。
+        """
+        from .calc import online as calc_online
+
+        payload = self._read_body()
+        timeout = int(payload.get("timeout") or 12)
+        timeout = max(4, min(timeout, 30))
+        try:
+            res = calc_online.refresh(timeout=timeout)
+        except Exception as e:                     # noqa: BLE001 - 联网失败要能看懂
+            self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, 200)
+            return
+        self._json({
+            "ok": bool(res.get("ok")),
+            "fetched_at": res.get("fetched_at", ""),
+            "catalog_ok": res.get("catalog_ok"),
+            "stale_catalog": res.get("stale_catalog"),
+            "counts": res.get("counts", {}),
+            "diff": res.get("diff", {}),
+            "sources": res.get("sources", []),
+            "clues": len(res.get("clues", [])),
+            "cache_path": res.get("cache_path", ""),
+        })
 
     def _calc_evaluate(self) -> None:
         payload = self._read_body()

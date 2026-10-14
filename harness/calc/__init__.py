@@ -4,13 +4,15 @@
 
 模块分工：
 
-- :mod:`harness.calc.model`    数据模型（培养方案、规则、门槛、活动）
-- :mod:`harness.calc.loader`   读取 `calcdata/*.json` 并做校验
-- :mod:`harness.calc.grade`    绩点换算与平均学分绩点
-- :mod:`harness.calc.metrics`  只读推算值（志愿时长、四六级、I 值等）
-- :mod:`harness.calc.basket`   活动篮：选活动 → 各通道加分
-- :mod:`harness.calc.goals`    门槛判定 + 分摊到课程的分数要求
-- :mod:`harness.calc.engine`   Facade：一次调用算完全部结果
+- :mod:`harness.calc.model`        数据模型（培养方案、规则、门槛、活动）
+- :mod:`harness.calc.loader`       读取 `calcdata/*.json` 并做校验
+- :mod:`harness.calc.grade`        绩点换算与平均学分绩点
+- :mod:`harness.calc.metrics`      只读推算值（志愿时长、四六级、I 值等）
+- :mod:`harness.calc.basket`       活动篮：选活动 → 各通道加分
+- :mod:`harness.calc.competitions` 《学生竞赛奖励办法》名录 → 具体赛事活动
+- :mod:`harness.calc.online`       「刷新联网」：抓官网名录页 → 对账 → 缓存（不调模型）
+- :mod:`harness.calc.goals`        门槛判定 + 分摊到课程的分数要求
+- :mod:`harness.calc.engine`       Facade：一次调用算完全部结果
 """
 from __future__ import annotations
 
