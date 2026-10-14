@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-articles", type=int, default=0, help="覆盖单栏目最大文章数")
     ap.add_argument("--concurrency", type=int, default=0, help="覆盖并发数")
     ap.add_argument("--no-robots", action="store_true", help="跳过 robots.txt 检查")
+    ap.add_argument("--no-auth", action="store_true",
+                    help="忽略 .auth/ 里的登录会话，按未登录状态抓")
     ap.add_argument("--reset", action="store_true", help="抓取前清空库（谨慎：会丢弃已有语料）")
     args = ap.parse_args(argv)
 
@@ -91,7 +93,21 @@ def main(argv: list[str] | None = None) -> int:
         print(msg, flush=True)
 
     t0 = time.time()
-    crawler = Crawler(store, s, progress=progress, check_robots=not args.no_robots)
+    # 有 .auth/ 会话就带着它抓：统一身份认证后面的栏目才拿得到（指南 §12.4）
+    session = None
+    if not args.no_auth:
+        from .auth import AuthSession
+
+        session = AuthSession()
+        if session.alive():
+            print(f"登录会话：{session.alive()} 个有效 cookie（{len(list(session.jar))} 个总计）"
+                  f"，认证后的栏目会用它抓")
+        else:
+            print("登录会话：无（登录墙栏目会被跳过；要抓就先 "
+                  "python -m harness.cli login）")
+            session = None
+    crawler = Crawler(store, s, progress=progress, check_robots=not args.no_robots,
+                      auth_session=session)
     report = crawler.run(sites)
 
     print("\n" + "=" * 78)

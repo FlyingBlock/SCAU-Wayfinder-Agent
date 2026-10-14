@@ -78,8 +78,11 @@ python -m harness.cli doctor
 | 命令 | 作用 |
 |---|---|
 | `harness.cli setup-key` | 交互式配置并验证 LLM key / 端点 / 模型（写 `.env`） |
-| `harness.cli doctor` | 自检：种子 / 数据库 / 计算器数据 / LLM 连通性 / 公网搜索 |
-| `harness.cli crawl --scope narrow\|p1\|p2\|all` | 抓取校内栏目群入库 |
+| `harness.cli doctor` | 自检：种子 / 数据库 / 计算器数据 / LLM 连通性 / 公网搜索 / 登录会话 |
+| `harness.cli login` | **登录统一身份认证**（或导入浏览器 Cookie），会话存到 `.auth/` |
+| `harness.cli whoami` | 看当前会话状态：cookie 数、能否进某个页面 |
+| `harness.cli fetch <url>` | 带会话抓一个 URL 看内容（排错登录墙用） |
+| `harness.cli crawl --scope narrow\|p1\|p2\|all` | 抓取校内栏目群入库（有会话时会带上） |
 | `harness.cli search "关键词"` | 只在已抓语料里检索，**不花 token**，调词和排错用它 |
 | `harness.cli ask "问题" [--rounds N] [--json out.json]` | 多轮检索 + 带引用生成 |
 | `harness.cli ask "问题" --dry-run` | 不调 LLM，只跑检索并打印证据和最终 Prompt |
@@ -107,6 +110,79 @@ python -m harness.cli search "挑战杯" --since 2025-01-01 --top-k 20
 # 不打印中间过程，导出完整 JSON
 python -m harness.cli ask "保研条件" --quiet --json out/answer.json
 ```
+
+---
+
+## 需要登录的页面（统一身份认证）
+
+校内有一部分栏目在 `cas.scau.edu.cn`（统一身份认证）后面：`xtw.scau.edu.cn` 的正文、
+融合门户、教务系统、信息公开等。裸请求拿回来的是登录页 HTML，所以早期版本只能
+**识别出来然后跳过**（`login_required`）——这也是为什么 `harness.maint purge` 里有一条
+「清理登录墙脏数据」。
+
+现在多了一条路：**把自己的会话交给 Harness，它带着会话去抓你自己本来就能看的页面。**
+
+### ① 推荐：导入浏览器 Cookie（不碰密码）
+
+在浏览器里正常登录，F12 → Network → 随便点一个已登录的请求 → Request Headers →
+把整行 `Cookie:` 的值复制出来，然后：
+
+```powershell
+python -m harness.cli login --cookie          # 交互粘贴（不回显）
+python -m harness.cli login --cookie "JSESSIONID=...; ..."   # 或者直接给
+```
+
+会话保存到 `.auth/cookies.json`（**已在 .gitignore，不会被提交**）。会话过期了就再导一次。
+
+### ② 也可以：账号密码表单登录
+
+```powershell
+python -m harness.cli login                   # 交互输入学号/密码，密码不回显
+python -m harness.cli login --service https://jwxt.scau.edu.cn/
+```
+
+它会自动解析登录页的隐藏字段（`execution` / `lt` / `_eventId`…，不写死参数名），
+提交后 302 跟到目标站，**并且真的再请求一次目标页确认进得去**才说成功。
+登录页有验证码 / 滑块时脚本过不去，这时请用 ①。
+
+| 参数 | 说明 |
+|---|---|
+| `--forget` | 清掉已保存的会话与账号密码 |
+| `--no-save` | 只存 Cookie，不把账号密码写进 `.auth/credentials.json` |
+| `--service` | 登录后要跳转的目标地址，默认融合门户 |
+
+### 怎么用 / 怎么确认
+
+```powershell
+python -m harness.cli whoami                                  # 看会话状态
+python -m harness.cli whoami https://xtw.scau.edu.cn/xxx.htm  # 试着进某个页面
+python -m harness.cli fetch https://xtw.scau.edu.cn/xxx.htm   # 把内容抓下来看
+python -m harness.cli crawl --url https://xtw.scau.edu.cn/tzgg/list.htm   # 带着会话抓
+```
+
+`crawl` 默认就会带 `.auth/` 里的会话；想按未登录状态跑（对照排查）加 `--no-auth`。
+如果带了会话还被弹回认证页，栏目会被标成 `auth_expired`，提示你重新 `login`。
+
+### 边界（请先读）
+
+- **只用你自己的账号，只抓你本来就能看到的页面。** 这个功能是「让我自己的会话能进我自己的页面」，
+  不是绕过权限；用它去拉别人的成绩、批量刷非公开数据，这里不提供也不支持。
+- **凭据只落在本地 `.auth/`**：`cookies.json` 与（可选的）`credentials.json`，
+  写入时已尽量收紧为仅当前用户可读，且不进 git、不进日志、不发给模型。
+  不要把这两个文件贴到聊天、issue 或截图里。
+- **别把密码写在命令行**（会进 shell 历史）：直接 `python -m harness.cli login` 交互输入。
+- **会话很短命**：教务类往往几十分钟到几小时就失效，失效就重新 `login`。
+- **抓取仍受限速保护**：并发别调高，认证站点更容易触发风控。
+
+### 自测（不需要真账号）
+
+```powershell
+python harness/test_auth.py
+```
+
+它在本机 `127.0.0.1` 起一个假 CAS 和一个假业务站，跑通
+「解析表单 → 登录 → 存 Cookie → 复用会话 → 抓取入库」，并验证无会话时照旧跳过。
+全程不联网、不碰你真实的 `.auth/`。
 
 ---
 

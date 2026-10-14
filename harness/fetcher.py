@@ -151,6 +151,7 @@ class Fetcher:
         delay: float = 0.8,
         jitter: float = 0.7,
         cache_enabled: bool = True,
+        auth_session=None,
     ) -> None:
         self.user_agent = user_agent
         self.timeout = timeout
@@ -158,12 +159,16 @@ class Fetcher:
         self.delay = delay
         self.jitter = jitter
         self.cache_enabled = cache_enabled
+        # 可选：登录会话（harness.auth.AuthSession）。带会话时重定向全程有 cookie，
+        # 登录墙后面的页面才拿得到（指南 §12.4）。
+        self.auth = auth_session
         self._cache: dict[str, FetchResult] = {}
         self._last: dict[str, float] = {}          # 按域名限速
         self._lock = threading.Lock()
         self._robots: dict[str, set[str]] = {}
         self._robots_ok: dict[str, bool] = {}
-        self.stats = {"requests": 0, "cache_hits": 0, "errors": 0, "bytes": 0}
+        self.stats = {"requests": 0, "cache_hits": 0, "errors": 0, "bytes": 0,
+                      "auth_requests": 0}
 
     # ---------- robots ----------
     def _robots_disallow(self, url: str) -> set[str]:
@@ -216,7 +221,12 @@ class Fetcher:
         if wait > 0:
             time.sleep(wait)
 
-    def _open(self, url: str, timeout: int | None = None):
+    def _open(self, url: str, timeout: int | None = None, use_auth: bool = False):
+        t = timeout or self.timeout
+        if use_auth and self.auth is not None:
+            # 走会话的 opener：cookie 读写、重定向跟随都在同一个 jar 里完成
+            self.stats["auth_requests"] += 1
+            return self.auth.request(url, "GET", timeout=t)
         req = urllib.request.Request(
             url,
             headers={
@@ -227,19 +237,22 @@ class Fetcher:
                 "Connection": "close",
             },
         )
-        return urllib.request.urlopen(req, timeout=timeout or self.timeout, context=_SSL_CTX)
+        return urllib.request.urlopen(req, timeout=t, context=_SSL_CTX)
 
-    def fetch(self, url: str, check_robots: bool = True) -> FetchResult:
+    def fetch(self, url: str, check_robots: bool = True, *,
+              use_auth: bool = False, force: bool = False) -> FetchResult:
         url = normalize_url(url)
         if not url:
             return FetchResult(url=url, error="empty_url")
 
-        if self.cache_enabled and url in self._cache:
+        if not force and self.cache_enabled and url in self._cache:
             self.stats["cache_hits"] += 1
             cached = self._cache[url]
             return FetchResult(**{**cached.__dict__, "from_cache": True})
 
-        if check_robots and not self.robots_allows(url):
+        # 带会话时不再看 robots：抓的是自己账号本来就能看的页面，
+        # 而且登录态下 robots.txt 通常也取不到、判定没有意义。
+        if check_robots and not use_auth and not self.robots_allows(url):
             return FetchResult(url=url, error="robots_disallow")
 
         last_err = ""
@@ -248,7 +261,7 @@ class Fetcher:
             t0 = time.time()
             self.stats["requests"] += 1
             try:
-                with self._open(url) as r:
+                with self._open(url, use_auth=use_auth) as r:
                     raw = r.read()
                     raw = _decompress(raw, r.headers.get("Content-Encoding", ""))
                     ctype = r.headers.get("Content-Type", "")

@@ -82,6 +82,10 @@ LOGIN_HOSTS = ("cas.scau.edu.cn", "portal.scau.edu.cn", "xxgk.scau.edu.cn",
                "iap.scau.edu.cn", "sso.scau.edu.cn")
 LOGIN_PATH_HINTS = ("/lyuapserver/login", "/login", "/cas/login", "/authserver",
                     "service=", "ticket=")
+# 正文里的登录页特征：有些登录墙**不改 URL**，直接原地返回登录页 HTML
+# （不认出来就会被当成「很短的文章」入库，污染语料）
+LOGIN_BODY_HINTS = ("lyuapserver", "cas.scau.edu.cn", "统一身份认证",
+                    "统一认证登录", "yours-account-name", "请输入账号")
 
 
 def looks_like_login(url: str) -> bool:
@@ -93,6 +97,12 @@ def looks_like_login(url: str) -> bool:
     return any(h in low for h in LOGIN_PATH_HINTS)
 
 
+def looks_like_login_body(html: str) -> bool:
+    """正文特征识别登录墙（只看开头一段，避免article 里引用到 CAS 链接就误判）。"""
+    low = (html or "")[:6000].lower()
+    return any(h.lower() in low for h in LOGIN_BODY_HINTS)
+
+
 class Crawler:
     def __init__(
         self,
@@ -101,19 +111,30 @@ class Crawler:
         *,
         progress: ProgressFn | None = None,
         check_robots: bool = True,
+        auth_session=None,
     ) -> None:
         self.store = store
         self.s = settings
+        # 登录会话（harness.auth.AuthSession）：有它就能抓统一身份认证后面的栏目，
+        # 没有就退化成原来的「识别登录墙 → 跳过」。
+        self.auth = auth_session
         self.fetcher = Fetcher(
             user_agent=settings.user_agent,
             timeout=settings.timeout,
             retries=settings.retries,
             delay=settings.delay,
             jitter=settings.jitter,
+            auth_session=auth_session,
         )
         self.progress = progress or (lambda msg: None)
         self.check_robots = check_robots
         self._print_lock = threading.Lock()
+
+    # ------------------------------------------------------------------ #
+    @property
+    def use_auth(self) -> bool:
+        """会话里还有没过期的 cookie 才值得带认证发请求。"""
+        return bool(self.auth is not None and self.auth.alive() > 0)
 
     # ------------------------------------------------------------------ #
     def _say(self, msg: str) -> None:
@@ -121,13 +142,20 @@ class Crawler:
             self.progress(msg)
 
     # ------------------------------------------------------------------ #
-    def discover(self, site: Site) -> tuple[list[ListItem], int, str]:
-        """抓列表页并抽条目。返回 (items, max_page, final_url)。"""
-        first = self.fetcher.fetch(site.url, check_robots=self.check_robots)
+    def discover(self, site: Site) -> tuple[list[ListItem], int, str, bool, bool]:
+        """抓列表页并抽条目。
+
+        返回 (items, max_page, final_url, 会话已过期, 撞到登录墙)。
+        """
+        first = self.fetcher.fetch(site.url, check_robots=self.check_robots,
+                                   use_auth=self.use_auth)
         if not first.ok:
-            return [], 0, ""
-        if looks_like_login(first.final_url or ""):
-            return [], 0, first.final_url or ""     # 登录墙栏目：直接放弃，不反复重试
+            return [], 0, "", False, False
+        if looks_like_login(first.final_url or "") or looks_like_login_body(first.text):
+            if self.use_auth:
+                # 带了会话还被弹回认证页 → 会话过期了，不重试，直接如实上报
+                return [], 0, first.final_url or "", True, True
+            return [], 0, first.final_url or "", False, True   # 登录墙：放弃，不反复重试
         parsed = parse_list(first.text, first.final_url or site.url)
         max_page = min(max(parsed.max_page, 1), self.s.max_pages_per_column)
         items = list(parsed.items)
@@ -135,7 +163,8 @@ class Crawler:
         if max_page > 1:
             extra_urls = page_urls(first.final_url or site.url, max_page)[1:]
             with ThreadPoolExecutor(max_workers=min(self.s.concurrency, len(extra_urls))) as ex:
-                futs = {ex.submit(self.fetcher.fetch, u, self.check_robots): u for u in extra_urls}
+                futs = {ex.submit(self.fetcher.fetch, u, self.check_robots,
+                                  use_auth=self.use_auth): u for u in extra_urls}
                 for fut in as_completed(futs):
                     try:
                         res = fut.result()
@@ -154,7 +183,7 @@ class Crawler:
                 continue
             seen.add(k)
             uniq.append(it)
-        return uniq, max_page, first.final_url or site.url
+        return uniq, max_page, first.final_url or site.url, False, False
 
     # ------------------------------------------------------------------ #
     def _select(self, items: list[ListItem], site: Site) -> list[ListItem]:
@@ -184,13 +213,16 @@ class Crawler:
     # ------------------------------------------------------------------ #
     def crawl_site(self, site: Site, report: CrawlReport) -> None:
         sid = self.store.upsert_site(site)
-        items, max_page, final_url = self.discover(site)
-        if looks_like_login(final_url) and not items:
+        items, max_page, final_url, auth_expired, login_wall = self.discover(site)
+        if auth_expired or (login_wall and not items):
             report.sites_failed += 1
-            report.errors.append((site.url, "login_required"))
-            self.store.upsert_site(site, error="login_required")
-            self.store.log_crawl(site.url, "login_required", error="redirected_to_login")
-            self._say(f"  ⊘ {site.name[:34]:<36} 需登录，已跳过")
+            err = "auth_expired" if auth_expired else "login_required"
+            report.errors.append((site.url, err))
+            self.store.upsert_site(site, error=err)
+            self.store.log_crawl(site.url, err,
+                                 error="session_expired" if auth_expired else "redirected_to_login")
+            self._say(f"  ⊘ {site.name[:34]:<36} "
+                      + ("会话已过期，请重新 login" if auth_expired else "需登录，已跳过"))
             return
         if max_page == 0 and not items:
             report.sites_failed += 1
@@ -243,13 +275,16 @@ class Crawler:
         )
 
     def _fetch_one(self, item: ListItem, site: Site, host: str) -> tuple[bool, bool]:
-        res = self.fetcher.fetch(item.url, check_robots=self.check_robots)
+        res = self.fetcher.fetch(item.url, check_robots=self.check_robots,
+                                 use_auth=self.use_auth)
         if not res.ok:
             self.store.log_crawl(item.url, "http_error", error=res.error, ms=int(res.elapsed * 1000))
             return False, False
-        if looks_like_login(res.final_url or "") or looks_like_login(item.url):
-            self.store.log_crawl(item.url, "login_required", http_code=res.status,
-                                 error="redirected_to_login")
+        # 注意：带会话抓登录墙栏目时，正文 URL 本身可能就含 service=/ticket=，
+        # 所以只看「最终落点」和正文特征是否仍是认证页，不拿 item.url 去判。
+        if looks_like_login(res.final_url or "") or looks_like_login_body(res.text):
+            err = "session_expired" if self.use_auth else "redirected_to_login"
+            self.store.log_crawl(item.url, "login_required", http_code=res.status, error=err)
             return False, False
         art = parse_article(res.text, res.final_url or item.url)
         if art.is_noise or len(art.body) < self.s.min_body_chars:
