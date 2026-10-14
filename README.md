@@ -29,7 +29,7 @@ python -m harness.cli setup-key
 ```
 
 ```powershell
-# ② Web 界面：python -m harness.cli web 之后，点右上角「⚙️ 设置」
+# ② Web 界面：python -m harness.cli web 之后，点左侧栏底部「⚙️ 模型设置」
 #    填 base URL + 模型名称 + API key，可先「测试连接」再「保存并验证」
 ```
 
@@ -59,7 +59,7 @@ python -m harness.cli crawl --scope all
 python -m harness.cli ask "生物专业可以参加什么竞赛？走什么发展路线？"
 
 # 或者开 Web 界面，浏览器访问 http://127.0.0.1:8848/
-# 计算器在同源的 http://127.0.0.1:8848/calc
+# 左侧栏在这几个视图之间切换：主页对话 / 绩点计算器（我的成绩·门槛对照·活动篮·计算口径）/ 数据口径说明
 python -m harness.cli web
 ```
 
@@ -78,11 +78,11 @@ python -m harness.cli doctor
 | 命令 | 作用 |
 |---|---|
 | `harness.cli setup-key` | 交互式配置并验证 LLM key / 端点 / 模型（写 `.env`） |
-| `harness.cli doctor` | 自检：种子 / 数据库 / 计算器数据 / LLM 连通性 / 公网搜索 / 登录会话 |
-| `harness.cli login` | **登录统一身份认证**（或导入浏览器 Cookie），会话存到 `.auth/` |
+| `harness.cli doctor` | 自检：种子 / 数据库 / 计算器数据 / LLM 连通性 / 公网搜索 / 登录会话与账号 |
+| `harness.cli login` | **登录统一身份认证**（账号密码表单登录，验证码自动走 OCR；或导入浏览器 Cookie），会话存到 `.auth/` |
 | `harness.cli whoami` | 看当前会话状态：cookie 数、能否进某个页面 |
 | `harness.cli fetch <url>` | 带会话抓一个 URL 看内容（排错登录墙用） |
-| `harness.cli crawl --scope narrow\|p1\|p2\|all` | 抓取校内栏目群入库（有会话时会带上） |
+| `harness.cli crawl --scope narrow\|p1\|p2\|all` | 抓取校内栏目群入库（有会话时带上；撞墙会用保存的账号自动登录） |
 | `harness.cli search "关键词"` | 只在已抓语料里检索，**不花 token**，调词和排错用它 |
 | `harness.cli ask "问题" [--rounds N] [--json out.json]` | 多轮检索 + 带引用生成 |
 | `harness.cli ask "问题" --dry-run` | 不调 LLM，只跑检索并打印证据和最终 Prompt |
@@ -92,6 +92,10 @@ python -m harness.cli doctor
 | `harness.cli goals ...` | **对照保研 / 考研 / 奖学金门槛**，并给出课程目标分 |
 | `harness.cli activities` | **列出全部可加分活动**与加分依据（`--list competition` 只看名录里的具体赛事） |
 | `harness.cli competitions` | **联网刷新赛事名录**：抓《学生竞赛奖励办法》名录页与竞赛通知栏目，和内置数据对账 |
+| `harness.cli parse <文件…>` | **解析本地办公文件**（pdf/doc/docx/xls/xlsx/ppt/pptx/zip/图片…），看能抽出什么 |
+| `harness.cli attach` | **下载并解析库内通知的附件**（存到 `data/attachments/`，正文入库参与检索） |
+| `harness.cli attachments` | 列出已下载的附件、解析状态、落盘路径（`--search 关键词` 搜附件正文） |
+| `harness.cli ocr` | **配置 / 测试 OCR**（百度智能云），图片与扫描件靠它提字 |
 | `harness.maint audit` | 体检语料：登录墙 / 导航标题 / 空正文各占多少 |
 | `harness.maint purge` | 清理登录墙、导航标题、空正文这类脏条目 |
 | `harness.maint refetch` | 重抓可疑条目，修标题和正文 |
@@ -110,7 +114,74 @@ python -m harness.cli search "挑战杯" --since 2025-01-01 --top-k 20
 
 # 不打印中间过程，导出完整 JSON
 python -m harness.cli ask "保研条件" --quiet --json out/answer.json
+
+# 看看某个办公文件里到底有什么（附件解析的排错入口）
+python -m harness.cli parse "报名表.xlsx" "评审细则.pdf" --chars 800
+
+# 补抓/重跑库内通知的附件（默认只补没解析过的；--all 连解析过的也重跑）
+python -m harness.cli attach --limit 20
+python -m harness.cli attach --article 137 --force
+
+# 配置百度 OCR（图片与扫描件里的文字），配置前可先 --test 验证
+python -m harness.cli ocr --api-key <AK> --secret-key <SK>
+python -m harness.cli ocr --image 报名表截图.png
 ```
+
+---
+
+## 附件与图片解析（含 OCR）
+
+校内通知最值钱的信息常常**不在正文里**：竞赛通知的正文只有一句「详见附件」，
+报名截止、赛程、名额表、加分表、课程名单全在 `.pdf / .doc / .xlsx` 里。这一层就是
+把它们变成可检索、可引用的文本。
+
+**下载存哪**：抓取时自动把附件下载到项目内的固定目录
+`data/attachments/<年>/<月>/<sha1前10位>_<文件名>`（`data/` 已在 `.gitignore` 中，
+校内材料不会进 git）。同一份内容只存一份——按内容哈希去重，通知里换个附件名也认得出。
+单篇通知默认最多 6 个附件、单个 25MB，可用 `ATTACH_MAX_FILES` / `ATTACH_MAX_MB` 调。
+
+**支持哪些格式**（共 42 种扩展名，全部本机解析，不需要任何 key）：
+
+| 类别 | 格式 | 怎么解的 |
+|---|---|---|
+| Word | `.docx` `.docm` | OOXML：正文 + 表格 + 文本框/SVG + 内嵌图片 |
+| Word（老） | `.doc` `.wps` | 自带的 OLE2 解析器：FIB → 片段表 → 正文；片段表不可用时退回「可见文本扫描」并如实标注 |
+| Excel | `.xlsx` `.xlsm` | openpyxl（装了就用）→ 退回 zip+XML；多工作表 |
+| Excel（老） | `.xls` | 自带的 BIFF8 解析器：SST/ROW/LABELSST/NUMBER/RK/MULRK |
+| PPT | `.pptx` + 老 `.ppt` | OOXML：逐页正文 + 备注；老 ppt 走可见文本扫描 |
+| PDF | `.pdf` | **自研纯标准库 PDF 解析**：交叉引用表/引用流、对象流、Flate/LZW/ASCII85/RunLength、ToUnicode CMap、CTM×Tm 变换链。仓库内 59 份真实 PDF 里 53 份完整抽出正文（含 442 页的学生手册），6 份是**扫描件**（无文本层，已自动改走 OCR） |
+| 压缩包 | `.zip` | 递归解析包内文件（带条目数/解压总量上限与路径穿越防护） |
+| 图片 | `.jpg .png .bmp .gif .tiff .webp` | 交给 OCR |
+| 文本 | `.txt .csv .html .rtf .md .json` | 直接解码（RTF 的 `\'xx` 多字节序列按 GB18030 成组解码） |
+
+**OCR**：图片（以及 PDF 里的内嵌位图、docx/xlsx/pptx 里的图片、压缩包里的图片）
+默认走百度智能云通用文字识别。填 key 的两种方式：
+
+```powershell
+python -m harness.cli ocr --api-key <AK> --secret-key <SK>   # 命令行（会先真实调用验证）
+# 或 Web 界面 →「⚙️ 设置」→「🖼 附件与 OCR」→ 填 AK/SK →「保存并验证」
+```
+
+- **不填也能用**：文档类附件照常解析，只是图片里的字提取不到，卡片上会写明原因。
+- 高精度版 / 标准版可切换（`OCR_ACCURATE=0` 用标准版，免费额度更多）。
+- access_token 缓存在 `data/cache/baidu_ocr_token.json`（30 天有效），同一张图按内容哈希只调一次。
+- 错误码会翻译成人话：`17 → 今日调用量已达上限`、`216201 → 图片尺寸不合法`…
+
+**它怎么进到问答里**：解析出的正文写进 `attachment` 表并建独立的 FTS 索引；
+检索时若命中附件正文，会把附件所属的**那篇通知**顶上（正文里只有「详见附件」，
+靠正文永远搜不到），并把附件正文按预算接在该证据后面送进模型。对话页的附件卡片
+会显示「已解析 N 字 / N 张表 / OCR N 张」，点「看解析正文」直接读抽出来的文本，
+不必先下载 PDF。卡片上还有「📁 本地副本」指向项目里存的那一份。
+
+```powershell
+python -m harness.cli attachments --search 报名截止        # 在附件正文里搜
+python -m harness.cli attachments --article 137            # 看某篇通知的附件解析状态
+python -m harness.cli doctor --test-ocr                    # 自检里顺带测一次 OCR
+```
+
+**已知局限**（都会如实写在附件的 `note` 里，不会假装成功）：
+少数旧 PDF 的 ToUnicode 表被上游工具写残（字符映射不全），抽出的文本会有缺字；
+老 `.doc` 的片段表畸形时退回扫描模式，可能漏字；`.rar / .7z` 不支持（需先手动解压）。
 
 ---
 
@@ -121,12 +192,35 @@ python -m harness.cli ask "保研条件" --quiet --json out/answer.json
 **识别出来然后跳过**（`login_required`）——这也是为什么 `harness.maint purge` 里有一条
 「清理登录墙脏数据」。
 
-现在多了一条路：**把自己的会话交给 Harness，它带着会话去抓你自己本来就能看的页面。**
+现在有三条路，**推荐第一条**：
 
-### ① 推荐：导入浏览器 Cookie（不碰密码）
+### ① 在设置里填一次账号密码，之后全自动
 
-在浏览器里正常登录，F12 → Network → 随便点一个已登录的请求 → Request Headers →
-把整行 `Cookie:` 的值复制出来，然后：
+打开 Web 界面 → 左下角「⚙️ 设置」→「🔐 账号与登录」，填学号 + 统一身份认证密码，
+点「保存并登录」。之后：
+
+- **采集时撞到登录墙会自己登录**（`AUTH_AUTO_LOGIN=1`，默认开），登完把这一栏目重放一次，
+  cookie 落盘，后面的栏目直接复用。不用先手动 `login`。
+- **登录页有图形验证码时全自动过**：脚本把验证码图下载下来（`<img>` 里的、`data:` 内联的、
+  页面上找不到就按常见路径猜），交给 OCR 识别，填回表单提交。认错就**换一张**再来，
+  默认最多 3 张（`AUTH_CAPTCHA_ROUNDS`）。
+- OCR 也认不出来时，弹窗里会**把那张验证码图显示出来让你填一次**，填完直接登录完成
+  ——不用重新走一遍流程。
+- OCR 用「🖼 附件与 OCR」分页里配的那对百度 AK/SK。**没配 OCR 也能用**：
+  账号密码照存不误，只是遇到验证码时得在弹窗里手填一次。
+
+```powershell
+# 命令行等价写法（一样会自动识别验证码）
+python -m harness.cli login
+python -m harness.cli doctor          # 看「登录会话 / 账号凭据 / 自动登录」三行
+```
+
+采集时想按未登录状态跑（对照排查）加 `--no-auto-login` / `--no-auth`。
+
+### ② 也可以：导入浏览器 Cookie（不碰密码）
+
+控件级验证（滑块、短信、双因子）脚本过不去，那种站点只能用这条。在浏览器里正常登录，
+F12 → Network → 随便点一个已登录的请求 → Request Headers → 把整行 `Cookie:` 的值复制出来：
 
 ```powershell
 python -m harness.cli login --cookie          # 交互粘贴（不回显）
@@ -135,21 +229,23 @@ python -m harness.cli login --cookie "JSESSIONID=...; ..."   # 或者直接给
 
 会话保存到 `.auth/cookies.json`（**已在 .gitignore，不会被提交**）。会话过期了就再导一次。
 
-### ② 也可以：账号密码表单登录
+### ③ 也是：纯命令行表单登录
 
 ```powershell
-python -m harness.cli login                   # 交互输入学号/密码，密码不回显
+python -m harness.cli login --user 2023xxxxxxxx   # 密码交互输入，不进 shell 历史
 python -m harness.cli login --service https://jwxt.scau.edu.cn/
+python -m harness.cli login --no-captcha          # 关掉验证码 OCR，对照排查用
 ```
 
 它会自动解析登录页的隐藏字段（`execution` / `lt` / `_eventId`…，不写死参数名），
-提交后 302 跟到目标站，**并且真的再请求一次目标页确认进得去**才说成功。
-登录页有验证码 / 滑块时脚本过不去，这时请用 ①。
+有验证码就下载 + OCR 识别，提交后 302 跟到目标站，**并且真的再请求一次目标页确认进得去**
+才说成功。
 
 | 参数 | 说明 |
 |---|---|
 | `--forget` | 清掉已保存的会话与账号密码 |
 | `--no-save` | 只存 Cookie，不把账号密码写进 `.auth/credentials.json` |
+| `--no-captcha` | 不尝试 OCR 识别验证码（要看清楚失败原因时用） |
 | `--service` | 登录后要跳转的目标地址，默认融合门户 |
 
 ### 怎么用 / 怎么确认
@@ -161,8 +257,20 @@ python -m harness.cli fetch https://xtw.scau.edu.cn/xxx.htm   # 把内容抓下�
 python -m harness.cli crawl --url https://xtw.scau.edu.cn/tzgg/list.htm   # 带着会话抓
 ```
 
-`crawl` 默认就会带 `.auth/` 里的会话；想按未登录状态跑（对照排查）加 `--no-auth`。
-如果带了会话还被弹回认证页，栏目会被标成 `auth_expired`，提示你重新 `login`。
+`crawl` 默认就会带 `.auth/` 里的会话（没有会话但有账号时，撞墙自动登录）；想按未登录状态跑
+加 `--no-auth`。如果带了会话还被弹回认证页，栏目会被标成 `auth_expired`，提示你重新 `login`。
+
+### 设置面板里那几个开关（写在 `.env`）
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `AUTH_AUTO_LOGIN` | `1` | 撞到登录墙时自动用保存的账号登录 |
+| `AUTH_OCR_CAPTCHA` | `1` | 登录页有验证码时用 OCR 识别 |
+| `AUTH_CAPTCHA_ROUNDS` | `3` | 验证码认错时最多换几张图重试（1–8） |
+| `AUTH_SERVICE` | 空 | 登录后跳转的目标地址，空＝融合门户 |
+| `AUTH_CAPTCHA_URL` | 空 | 验证码图片地址；页面里自动找不到时才需要手填 |
+
+**账号密码不进 `.env`**，只落在 `.auth/credentials.json`。
 
 ### 边界（请先读）
 
@@ -170,9 +278,15 @@ python -m harness.cli crawl --url https://xtw.scau.edu.cn/tzgg/list.htm   # 带�
   不是绕过权限；用它去拉别人的成绩、批量刷非公开数据，这里不提供也不支持。
 - **凭据只落在本地 `.auth/`**：`cookies.json` 与（可选的）`credentials.json`，
   写入时已尽量收紧为仅当前用户可读，且不进 git、不进日志、不发给模型。
+  接口只回显打码后的账号（`202***56`）与「密码已设置」，**密码原文从不出现在任何响应里**。
   不要把这两个文件贴到聊天、issue 或截图里。
-- **别把密码写在命令行**（会进 shell 历史）：直接 `python -m harness.cli login` 交互输入。
-- **会话很短命**：教务类往往几十分钟到几小时就失效，失效就重新 `login`。
+- **改设置只允许本机**：`--host 0.0.0.0` 暴露到局域网时，别人既看不到也改不了你的账号。
+- **验证码只在登录那一刻用一次**：图片不落盘、不入库、不发模型；OCR 额度会按验证码张数消耗
+  （默认最多 3 张 × 2 个引擎 = 最多 6 次调用/次登录，可见额度的账号请留意）。
+- **滑块 / 短信 / 双因子仍然过不去**，脚本会明确报「拦路虎」并让你改走 Cookie 导入。
+- **别把密码写在命令行**（会进 shell 历史）：直接 `python -m harness.cli login` 交互输入，
+  或者用设置面板。
+- **会话很短命**：教务类往往几十分钟到几小时就失效，失效就重新登录（自动登录会在撞墙时再试一次）。
 - **抓取仍受限速保护**：并发别调高，认证站点更容易触发风控。
 
 ### 自测（不需要真账号）
@@ -182,8 +296,28 @@ python harness/test_auth.py
 ```
 
 它在本机 `127.0.0.1` 起一个假 CAS 和一个假业务站，跑通
-「解析表单 → 登录 → 存 Cookie → 复用会话 → 抓取入库」，并验证无会话时照旧跳过。
-全程不联网、不碰你真实的 `.auth/`。
+「解析表单 → 登录 → 存 Cookie → 复用会话 → 抓取入库」，还覆盖验证码那条线：
+**带图形验证码的登录页**（假 OCR 注入，不联网、不花额度）能自动过、
+认错一次会换一张重试、一直认错会如实失败并把图带回前端、
+人工填验证码能把登录做完、采集撞墙时自动登录并抓取入库、
+以及无会话时照旧跳过。全程不联网、不碰你真实的 `.auth/`。
+
+---
+
+## 系统提示词（harness 的口径就写在这里）
+
+整个 harness 的「人设、检索范围、引用纪律、输出结构」都在 `harness/prompts.py` 里，
+改口径只改这一个文件（`agent.py` 只负责把证据填进去）。四段各自管一件事：
+
+| 常量 | 作用 | 关键约束 |
+|---|---|---|
+| `SYSTEM` | 所有调用共用的系统提示词 | 唯一事实来源是检索到的校内/公网证据；不得编造 URL/日期/赛事名/金额；校内只覆盖公开页面（登录墙后面的不在内）；涉及全国性赛事规则与含金量时以公网证据为准；每个事实后跟 `[n]`，无证据的判断必须写「推测：」；超 18 个月标 `⚠️可能已过期`；还要求把活动写成**完整全称**，否则对不上名录卡片 |
+| `DECOMPOSE` | 问题 → 4-8 条可检索子查询（site / web 分流） | 出现「活动 / 竞赛 / 报名 / 最近」这类意图时，至少两条 site 查询去覆盖校内通知栏目里的近期活动 |
+| `GAP` | 判断证据够不够，不够再补哪些查询 | 额外检查两件事：有没有「具体能参加的活动」的证据、有没有时间（报名截止/比赛时间） |
+| `ANSWER` | 最终回答的结构 | 结论概览 → **近期可以参加的活动与竞赛** → 路线逐条展开 → 关键时间节点（表格）→ 本次未能证实（不许留空）→ 引用；活动名要与原文一致，系统要按名字去已核验名录匹配档位 |
+| `RERANK` | 候选网页打分（备用） | 正在报名、带截止日期的竞赛通知应给 9-10 分 |
+
+想换风格、加维度（比如把「就业」「出国」拆得更细），改这里的字符串即可，不用碰代码逻辑。
 
 ---
 
@@ -197,9 +331,42 @@ python harness/test_auth.py
 
 **公网搜索。** 默认走 DuckDuckGo Lite，Bing 备用。实测 `cn.bing.com` 会被重定向到百度，`www.bing.com` 返回的结果和查询完全无关，所以只当备胎。
 
-**Web 界面。** 标准库 `http.server` 写的，SSE 流式输出。双击仓库根目录的 `启动Harness.cmd` 也能开。右上角「⚙️ 设置」可以直接填 OpenAI 兼容端点的 base URL / 模型名 / API key：回车前先「测试连接」，点「保存并验证」会真实调一次模型，通过才写进 `.env`，同时立刻作用到当前进程（不用重启）。key 只以掩码回显，且只有从本机（127.0.0.1）打开页面才能改——`--host 0.0.0.0` 暴露到局域网时，别人改不了你的 key。
+**Web 界面。** 标准库 `http.server` 写的，SSE 流式输出。双击仓库根目录的 `启动Harness.cmd` 也能开。
 
-**采集阶段不烧 token。** 列表页和正文全靠正则加 lxml 抽，只有最后生成答案才调模型。一次完整问答大概 20k prompt + 3k completion。
+**整个界面是一份单页应用**（`harness/app.py` 装配、`harness/appshell.py` 提供外壳），布局对齐 chat.deepseek.com：
+
+| 区域 | 内容 |
+|---|---|
+| 左侧栏 | 主页对话 · 绩点计算器（含① 我的成绩 / ② 门槛对照 / ③ 活动篮 / ④ 计算口径 四个子页）· 数据口径说明 · ⚙️ 设置（三个分页：🧠 模型 / 🖼 附件与 OCR / 🔐 账号与登录）。可收起成图标栏，窄屏自动变成浮层 |
+| 对话页 | **模型输出在上方**（可滚动），**输入框固定在底部中间**；Enter 发送、Shift+Enter 换行，输入框随内容长高；检索过程收在回答下方的折叠块里 |
+| 计算器 | 四个子页 + 右侧实时结果，切换只切显隐，成绩与活动篮状态不丢（存在 localStorage） |
+
+切换视图走 hash 路由（`#/chat`、`#/calc/scores`、`#/calc/goals`、`#/calc/acts`、`#/calc/rules`），刷新后停在同一个视图；老地址 `/calc`、`/calc-docs` 仍然可用，会自动落到对应视图。
+
+左下角「⚙️ 模型设置」可以直接填 OpenAI 兼容端点的 base URL / 模型名 / API key：回车前先「测试连接」，点「保存并验证」会真实调一次模型，通过才写进 `.env`，同时立刻作用到当前进程（不用重启）。key 只以掩码回显，且只有从本机（127.0.0.1）打开页面才能改——`--host 0.0.0.0` 暴露到局域网时，别人改不了你的 key。
+
+**对话里的卡片：活动 / 附件 / 关键时间。** 答案下面不是只有一段文字，而是跟着一组卡片
+（`harness/cards.py`）：
+
+| 卡片 | 里面有什么 | 能做什么 |
+|---|---|---|
+| **活动 / 赛事** | 活动全称、主办、时间与报名截止、**综测与推免两套加分**（按成果档位列出）、级别与名录序号、加分依据文件名 | 「＋ 添加到活动篮」——一键写进计算器同一份 localStorage 状态，切到计算器立刻看到加分变多少 |
+| **附件** | 通知里挂的 pdf/doc/xlsx/zip（比赛报名表、赛程、名额表往往只在附件里），带文件类型标签与出处通知 | 「⬇ 下载」直达文件，或「↗ 打开原文」 |
+| **关键时间** | 从通知正文里抽出的报名截止 / 比赛时间 / 材料提交，截止类日期高亮 | 点回原通知 |
+
+三条硬规则，都是为了避免「看起来很专业但其实是编的」：
+
+1. **卡片不由模型生成。** 模型只负责写带 `[n]` 引用的正文；卡片是拿证据（标题、正文、
+   发布时间、附件链接）做确定性抽取，再去 `calcdata` 那张已核验的《学生竞赛奖励办法》
+   名录上匹配档位。分数与时间都能回溯到文件与证据编号。
+2. **匹配不上就说匹配不上。** 名录里没有的活动照实展示（时间、主办、原文链接），
+   卡上标「未匹配到已核验名录，暂不计入活动篮」，并指向计算器让它自己去搜——
+   **宁可不加分，也不发明分值**。匹配用归一化名称 + 包含度打分，同名赛事的不同赛道
+   （生命科学竞赛的科学探究类 / 创新创业类）靠赛道词区分。
+3. **只有能加分的活动才给入篮按钮。** 入篮写的是 `activity_id`，与计算器活动篮完全同一份状态，
+   两边永远一致。
+
+**采集阶段不烧 token。** 列表页和正文全靠正则加 lxml 抽，只有最后生成答案才调模型。一次完整问答大概 20k prompt + 3k completion。卡片装配也不调模型、不联网。
 
 **绩点 / 综测计算器。** 见下一节。它同样不烧 token、不联网，只读数据文件。
 
@@ -325,7 +492,7 @@ python -m harness.cli competitions
 
 ### Web 界面
 
-`python -m harness.cli web` 之后访问 <http://127.0.0.1:8848/calc>，四个 tab：
+`python -m harness.cli web` 之后访问 <http://127.0.0.1:8848/>，计算器在左侧栏「📊 绩点计算器」下，分成四个子页：
 
 1. **我的成绩** —— 选专业自动导入该专业全部课程，按学期录成绩；填四六级、体测、德育分等指标
 2. **门槛对照** —— 每条路线的门槛逐条打勾/打叉、差多少，以及课程目标分
@@ -334,7 +501,7 @@ python -m harness.cli competitions
    顶部「🔄 刷新联网」抓学校官网与竞赛通知栏目，对账内置名录并列出「还有哪些其他活动」
 4. **计算口径** —— 绩点折算表、综测分项与上限、加分系数、赛事名录与档位组合口径、数据出处
 
-结果存在浏览器 localStorage 里，刷新不丢。
+结果存在浏览器 localStorage 里，刷新和切换视图都不丢。
 
 ### 数据怎么改
 
@@ -397,11 +564,24 @@ python data/research/smoke_competitions.py
 # 设置（⚙️）：配置层 + 端到端（自己起假 OpenAI 端点，不碰真 .env）
 python data/research/smoke_settings.py
 
+# 对话卡片：活动名清洗 / 名录匹配（含「不许硬凑」的反向用例）/ 时间抽取 / 附件成卡 / 与计算器同口径
+python data/research/smoke_cards.py
+
+# 卡片链路：自造库 → 真的起 http.server → /api/ask 的 SSE 里就得有 cards 事件（dry=1，不调模型）
+python harness/test_cards_api.py
+
+# 附件解析与 OCR：各格式抽取 / .doc 两条路径 / .xls BIFF8 / 假百度 OCR / 落盘去重 / 附件 FTS / 越权路径
+python data/research/smoke_attach.py
+# 端到端：自起假校内站点 → 真 Crawler 抓正文+附件 → 附件正文进检索与最终 Prompt
+python data/research/smoke_attach_e2e.py
+# 需要 .xls 样本时先生成一份（自造 OLE2+BIFF8，不需要装 Excel）
+python data/research/make_xls_fixture.py data/research/ole2/sample.xls
+
 # 前端：需要一个正在跑的 web 服务
 python -m harness.cli web --port 8879 --no-open
-python data/research/smoke_web.py      --port 8879   # HTTP 接口
-python data/research/smoke_ui.py       --port 8879   # 用假 DOM 实跑计算器页 JS
-python data/research/smoke_settings_ui.py --port 8879  # 用假 DOM 实跑设置弹窗 JS
+python data/research/smoke_web.py      --port 8879   # HTTP 接口 + 单页结构
+python data/research/smoke_ui.py       --port 8879   # 用假 DOM 实跑整页 JS（外壳/对话/计算器/卡片）
+python data/research/smoke_settings_ui.py --port 8879  # 用假 DOM 实跑设置弹窗 JS（含附件/OCR 分页）
 ```
 
 `smoke_calc.py` 里有一批回归断言，包括几个踩过的坑：量纲不同的通道（第二课堂学分、志愿服务时长）不能被当成加分直加进综测总分；`bonus_cap` 必须真的截断；不及格的课不能计入已获学分；重修课要按封顶绩点算；绩点折算表逐分核对 `分数 ÷ 10 − 5`。
@@ -409,6 +589,16 @@ python data/research/smoke_settings_ui.py --port 8879  # 用假 DOM 实跑设置
 `smoke_competitions.py` 覆盖赛事名录这条新链路：名录页解析（84/16/10 条、年份标题行不能被当成赛事）、每条赛事展开后 id 唯一且有非零分值、档位数值与已核验口径一致、联网新增赛事合并且不与内置重复、对账能认出新增/改名/级别变化/官方移除、通知标题与摘要分离、具体赛事进篮后综测与推免两条线各自加分并受上限约束。全程离线。
 
 `smoke_settings.py` 覆盖的是设置面板的两段：`.env` 合并写入（保留用户自己写的注释与其它配置、清掉旧的 `DEEPSEEK_*`、留空的字段不覆盖已存值）、保存后不重启是否立刻生效，以及「key 错 → 拒绝写盘」这条最要紧的失败路径。它自带的假 OpenAI 端点让全部断言都不需要真 key、不联网。
+
+`smoke_cards.py` 覆盖对话卡片这层：通知标题里切出活动名（去机构前缀、去文书尾巴、去届次）、与已核验名录匹配（**反向用例**：像但不是同一个赛事的必须匹配不上）、同名赛事不同赛道要分开、报名截止/比赛时间/材料提交的抽取（整段无换行的正文也要抽得到，且上一条的「截止」不能污染下一条）、附件成卡、以及「卡片入篮后的加分与卡片显示的分值同口径」。全程离线。
+
+`test_cards_api.py` 覆盖的是中间那一段：造一个临时库、塞三篇像华农通知的文章，真的起一个 http.server，用 `dry=1` 请求 `/api/ask`，检查 SSE 里确实有 `event: cards`、卡片内容对得上（含「选课通知不许混进活动卡」「未匹配的不给假分值」），以及库里没语料时降级成提示而不是 500。它不调模型、不联网。
+
+`smoke_attach.py` 覆盖附件与 OCR 这条链路（离线，60 项断言）：docx（现场生成带表格的样本）/ xlsx / pdf（含扫描件判定与内嵌图片抽取）/ .doc（真实学校文件，两条解析路径）/ .xls（自造 OLE2+BIFF8）/ csv / rtf（多字节 `\'xx` 成组解码）/ html / zip 递归 / 图片降级；百度 OCR 全程用**假端点**验证（取 token、token 落盘缓存、高精度 vs 标准版、同图只调一次、错误码翻译、未配置时不报错只跳过）；附件落盘按内容哈希去重、入库、附件 FTS 能回溯到所属通知、卡片带上解析结果；以及附件文件服务的**越权路径必须 403**、`fetch_bytes` 的超限与 404 处理。
+
+`smoke_attach_e2e.py` 是这条链路的端到端验收（14 项）：自起一个假校内站点（列表页 + 正文页 + 真 docx 附件），跑**真正的 Crawler**，检查附件被下载到 `data/` 下、正文与表格被抽出、只写在附件里的关键词能检索回该通知、`dry_run` 的最终 Prompt 里确实带上了附件正文、卡片层标出「已解析」并带 `attachment_id`。
+
+`smoke_settings_ui.py` 的假 DOM 里补了「附件与 OCR」分页：切页会拉配置、select 按服务端状态回填、AK/SK 只回显掩码、不填 key 保存要红、填了要绿且请求体里两个 key 都在、清除凭据与切回模型分页。前端脚本拼在同一个 `<script>` 里，只有把整页 JS 实跑一遍才能发现这类「接口字段对不上」的问题。
 
 ---
 
@@ -420,15 +610,27 @@ L0 种子层   scau_bio_seed.yaml (349 条白名单) ──curate──▶ 42/16
 L1 采集层   列表页 list.htm → 读「尾页」得 max_page → 抓前 N 页
             → 按 a{ID} 去重 → 按标题相关度+日期排序 → 抓正文
                                   │
-L2 解析层   URL 归一化(强制 https) · 中文日期解析 · 正文清洗 · 附件链接
+L2 解析层   URL 归一化（真实域名强制 https，本机地址保持原协议） · 中文日期解析
+            · 正文清洗 · 附件链接
                                   │
-L3 存储层   SQLite + FTS5（中文 bigram 分词）
+L2.5 附件层  附件下载到 data/attachments/<年>/<月>/（按内容哈希去重）
+            → 文档解析（pdftext / OOXML / OLE2-Word / BIFF8 / zip 递归）
+            → 图片与扫描件走 OCR（百度，可关）→ 附件正文单独建 FTS
+                                  │
+L3 存储层   SQLite + FTS5（中文 bigram 分词；article 与 attachment 各一张 FTS 表）
                                   │
 L4 检索层   OR 召回候选 → Python 侧按「词覆盖度 + BM25 + 学院加权」重排
+            → 附件正文命中时把其所属通知顶上（正文里往往只有「详见附件」）
                                   │
 L5 编排层   意图分解 → 站内+公网检索 → 缺口检测 → 补检索(≤2轮) → 证据聚合
                                   │
 L6 输出层   分路线答案 + 逐条 [n] 引用 + 时效标注 + 「本次未能证实」清单
+                                   │
+L7 卡片层   证据 → 活动/赛事卡（带综测·推免分值 + 报名截止）· 附件卡 · 关键时间卡
+            （确定性抽取 + 与已核验名录匹配，不调模型；匹配不上就如实标注）
+            附件卡带解析结果（已解析 N 字 / N 张表 / OCR N 张）· 可看抽出的正文
+            · 可打开 data/attachments/ 里的本地副本
+            →「＋ 添加到活动篮」写进计算器同一份状态
 ```
 
 ### 目录结构
@@ -440,16 +642,26 @@ SCAU-Wayfinder-Agent/
 │  ├─ seed.py       解析 seed/scau_bio_seed.yaml（自写的 flow-mapping 解析器）
 │  ├─ curate.py     按问题意图裁剪栏目清单（narrow / p1 / p2）
 │  ├─ fetcher.py    urllib 抓取：https 归一化 / 编码探测 / 限速 / 重试 / robots
+│  ├─ auth.py       ★ 登录墙：CAS 表单登录 / Cookie 导入 / **验证码 OCR 自动过** /
+│  │                  凭据落盘（.auth/）· 撞到登录墙时自动登录
 │  ├─ parse.py      Webplus 列表页与正文页解析（不烧 token 的抽取）
-│  ├─ store.py      SQLite + FTS5 + 中文 bigram 分词 + 两段式检索
+│  ├─ pdftext.py    ★ 纯标准库 PDF 文本抽取（xref/对象流/ToUnicode/变换链，见下文）
+│  ├─ docparse.py   ★ 办公文件解析：docx/xlsx/pptx/pdf/doc/xls/rtf/zip/图片
+│  ├─ ocr.py        ★ OCR 层：百度智能云（可配）+ 未配置时安全降级 + 图片预处理
+│  ├─ attachments.py ★ 附件层：下载到 data/attachments/、解析、入库、限额与去重
+│  ├─ store.py      SQLite + FTS5 + 中文 bigram 分词 + 两段式检索（article/attachment 两张 FTS）
 │  ├─ llm.py        OpenAI 兼容 LLM 客户端（默认 DeepSeek）
 │  ├─ websearch.py  公网搜索（ddg / bocha / tavily / bing）
-│  ├─ prompts.py    全部 Prompt 模板，改这里就能改回答风格
-│  ├─ agent.py      编排：分解 → 检索 → 缺口 → 补检索 → 生成
+│  ├─ prompts.py    全部 Prompt 模板（= harness 的系统提示词），改这里就能改回答口径
+│  ├─ agent.py      编排：分解 → 检索 → 缺口 → 补检索 → 生成 → 卡片装配
+│  ├─ cards.py      对话卡片：活动/赛事（带综测·推免分值）· 附件 · 关键时间；不调模型
 │  ├─ maint.py      语料体检、清理、重抓
 │  ├─ cli.py        命令行入口
-│  ├─ web.py        Web 界面（标准库 http.server + SSE 流式输出 + ⚙️ 设置面板）
-│  ├─ calcpages.py  计算器页面与口径说明页（内嵌 HTML）
+│  ├─ app.py        单页应用装配：外壳 + 对话视图（含卡片渲染）+ 计算器视图 + 口径说明
+│  ├─ appshell.py   左侧栏外壳：视图路由、侧栏开合、⚙️ 设置弹窗、卡片样式、轻提示
+│  ├─ web.py        Web 服务（标准库 http.server + SSE 流式输出 + 各 API）
+│  ├─ calcpages.py  计算器视图（四个子页的标记与脚本，交给 app.py 装配）
+│  ├─ test_cards_api.py  卡片链路自测（自造库 + 真 http.server + SSE 断言，不调模型）
 │  ├─ crawl.py / crawler.py   采集入口与调度
 │  └─ calc/         绩点 / 综测计算器（零依赖，只读 calcdata/*.json）
 │     ├─ model.py        数据模型（培养方案、规则、门槛、活动）
@@ -470,9 +682,16 @@ SCAU-Wayfinder-Agent/
 │  ├─ goals.json       保研 / 考研 / 奖学金门槛
 │  ├─ activities.json  通用加分项清单（综测/推免两套分值）
 │  └─ competitions.json 《学生竞赛奖励办法》110 个具体赛事 + 加分档位模板
-├─ data/research/               调研取证产物（脚本 / 原文 / 提取文本），不参与运行
-│  ├─ build_competitions.py     从名录页文本生成 calcdata/competitions.json
-│  └─ sfs_c20310a447244.txt     名录页正文（内置数据的取证副本）
+├─ data/                        运行期数据（整个目录已在 .gitignore 中，不入库）
+│  ├─ crawler.db               SQLite 语料库
+│  ├─ attachments/<年>/<月>/   ★ 下载的附件与图片（内容哈希去重，项目内固定位置）
+│  └─ research/                调研取证产物（脚本 / 原文 / 提取文本）
+│     ├─ build_competitions.py     从名录页文本生成 calcdata/competitions.json
+│     ├─ smoke_attach.py           附件解析与 OCR 离线自测（60 项）
+│     ├─ smoke_attach_e2e.py       附件管道端到端（假站点 + 真 Crawler，14 项）
+│     ├─ make_xls_fixture.py       自造 OLE2+BIFF8 的 .xls 样本（不需要 Excel）
+│     ├─ smoke_cards.py            对话卡片离线自测（清洗 / 匹配 / 时间 / 附件 / 入篮口径）
+│     └─ sfs_c20310a447244.txt     名录页正文（内置数据的取证副本）
 ├─ docs/                        设计与侦察文档（见文末）
 ├─ 启动Harness.cmd              Windows 双击即开 Web 界面
 ├─ data/crawler.db              语料库（不入 git）
@@ -494,6 +713,7 @@ SCAU-Wayfinder-Agent/
 - **综测各分项的「基础分」需要手填**（德育基础分+互评分、体育基础分、美育/劳育基础分），因为这些来自班级评议与辅导员评价，不在任何可查的数据里。不填则按细则的常见值预置并标注。
 - **活动清单是「能查到出处的」而非穷举。** `activities.json` 的 41 项覆盖了细则里所有明确的加分条目；`competitions.json` 另有《学生竞赛奖励办法》名录里的 110 个具体赛事（T 84 / A 16 / B 10），名录外的比赛（例如「丁颖杯」这类校内赛事）要靠「活动篮」页的「🔄 刷新联网」从通知栏目里发现线索，或按同样格式自己加。学院每年会出新活动，需要时按 JSON 格式加一条即可。
 - **门槛的参考线是经验值。** 细则只写满分不写最低要求的地方（如「创新能力 10 分」），工具给的是「有竞争力」的参考线，标注为 `adjustable`，不是明文规定。
+- **对话卡片是「抽出来的」，不是「读懂的」。** 活动名靠通知标题切、时间靠「标签后面的第一个日期」、附件靠链接后缀，都是确定性规则：标题起得怪的会切歪（卡片上显示的是切出来的名字，匹配不上名录时会写明），正文用「另行通知」「时间待定」的抽不到时间。附件里的内容**已经会解析**（见上文「附件与图片解析」），卡片上会给出解析结果与入口；少数畸形文件解析不出正文时，卡片会如实写「解析失败/只扫到部分文本」，不会假装读到了。**卡片里唯一敢保证的是：分值来自已核验的 `calcdata`，匹配不上就不给分值。**
 
 ---
 
@@ -501,11 +721,16 @@ SCAU-Wayfinder-Agent/
 
 | 症状 | 原因与解法 |
 |---|---|
-| `尚未配置 LLM API key` | 跑 `python -m harness.cli setup-key`，或在 Web 界面点右上角「⚙️ 设置」 |
+| `尚未配置 LLM API key` | 跑 `python -m harness.cli setup-key`，或在 Web 界面点左下「⚙️ 模型设置」 |
 | `HTTP 401 Authentication Fails` | key 错了或失效了，重新填一次（设置面板的「测试连接」能当场验出来） |
 | 设置保存了却不生效 | 系统环境变量里有同名的 `LLM_API_KEY` / `DEEPSEEK_API_KEY`，优先级高于 `.env`；设置面板和 `cli doctor` 都会提示是哪几个（本次运行仍会生效，重启后被环境变量盖回） |
 | 设置面板提示「只能看不能改」 | 页面不是从本机（127.0.0.1）打开的，改用本机地址访问 |
 | 检索没有命中 | 先 `harness.cli search "短词"` 确认库里有；关键词用 2-6 字，别用整句 |
+| 附件没被下载 | 附件在 `crawl` 时抓；被 `--no-attachments` 跳过时可单独补：`harness.cli attach --all` |
+| 附件解析出 0 字 | 看卡片上的 note：可能是扫描件（要配 OCR）、加密 PDF、或 rar/7z（需先手动解压）。用 `harness.cli parse <文件>` 单文件复现 |
+| OCR 没生效 | `harness.cli ocr` 看状态：百度要同时填 AK 与 SK，且应用开通「通用文字识别」；`--test` 会真调一次 |
+| 图片里的字仍抽不到 | 只有文档里**已有**的内嵌图片会走 OCR（本版不把扫描页渲染成图片）；免费额度用尽会返回错误码 17 |
+| 附件目录越来越大 | 附件默认存 `data/attachments/`，占用见 `harness.cli doctor`；删掉该目录只影响「本地副本」链接，随时可 `attach --all` 重抓 |
 | 库内文章数为 0 | 还没抓，跑 `crawl --scope narrow` |
 | 某栏目 0 篇 | 可能是空栏目（正常），也可能模板不同；用 `--url` 单独抓一次看日志 |
 | 答案里有 `⚠️可能已过期` | 该证据发布时间超过 18 个月，属预期行为 |
@@ -524,9 +749,9 @@ python -c "import sqlite3;d=sqlite3.connect(r'data\crawler.db');d.row_factory=sq
 1. **扩到更多学院和专业。** 现在能搜的主要是生物相关方向，其他学院的通知要跑 `--scope p1` / `all` 才慢慢补上。目标是让每个专业都能问自己的问题。计算器同理，目前只适配生物技术、生物科学两个专业，加专业只需往 `calcdata/majors.json` 追加一项。
 2. **把逐门课程的学分换成官方培养方案。** 计算器的毕业总学分和学位信息已核验，但课程级的学分仍是按公开课程信息整理的规划表。拿到各专业培养方案的完整课程表后替换即可（`calcdata/majors.json`）。
 3. **补齐其他学院的综测/推免细则。** 各学院口径差异很大（学业成绩折算公式、加分表、封顶值都不同），目前只做了生命科学学院。数据格式已经支持按通道配置不同口径，加学院不用改代码。
-4. **解析附件正文。** 竞赛通知的关键信息经常在 `.doc/.xlsx/.pdf` 附件里，本机 `python-docx` / `openpyxl` 可用，PDF 要额外装 `pypdf`。解析了之后能直接抽报名截止时间、参赛资格这些字段。（这次调研期间已经临时打通了 PDF 提取，脚本留在 `data/research/pdftext.py`，还没接进采集流程。）
-5. **结构化字段。** 对疑似竞赛通知做 LLM 抽取（`is_competition / level / signup_deadline / eligible`），落进 `field` 表，之后就能直接回答「最近能报名的国家级竞赛有哪些」，也能自动更新活动清单。
-6. **定时增量。** 用 Windows 计划任务每天凌晨跑一次 `crawl`，现在还得手动重跑。
+4. ~~**解析附件正文。**~~ **已完成**（见上文「附件与图片解析」）：PDF / doc / docx / xls / xlsx / ppt / pptx / 压缩包 / 图片全部本机解析，附件下载到 `data/attachments/`，正文进检索与证据链；图片与扫描件走可配置的 OCR。下一步可以做的：把**扫描页 PDF 渲染成图片**再 OCR（现在只处理文档里已有的内嵌图片）、离线 Tesseract 作为无 key 的备选、以及把附件里的表格（加分表、名额表）结构化进 `calcdata`。
+5. **结构化字段。** 对疑似竞赛通知做 LLM 抽取（`is_competition / level / signup_deadline / eligible`），落进 `field` 表，之后就能直接回答「最近能报名的国家级竞赛有哪些」，也能自动更新活动清单。附件正文已经进证据，这一条现在更容易做了。
+6. **定时增量。** 用 Windows 计划任务每天凌晨跑一次 `crawl`（现在会连附件一起抓，注意 `ATTACH_MAX_MB` / 附件目录占用），现在还得手动重跑。
 7. **评估集。** 用固定的验收问题量化引用准确率和幻觉率，改动 Prompt 之后能看出有没有变差。
 8. **向量检索。** 同义表达（「推免」vs「保研」）现在靠 bigram 近似覆盖，数据量大了以后加 embedding 做混合检索。
 
