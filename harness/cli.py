@@ -30,9 +30,11 @@ import time
 from pathlib import Path
 
 from .config import (
+    AUTH_ENV_KEYS,
     ENV_FILE,
     LLM_ENV_KEYS,
     LLM_LEGACY_KEYS,
+    OCR_ENV_KEYS,
     SETTINGS,
     WORKSPACE,
     env_file_shadowed_keys,
@@ -186,10 +188,31 @@ def cmd_doctor(args: argparse.Namespace) -> int:
           f"{'（不需要 key）' if searcher.provider == 'bing' else ''}"
           f"{'（已关闭，仅用校内语料）' if not searcher.available else ''}")
 
-    # 登录墙：有会话就能抓认证后面的栏目，没有就仍然跳过
+    # 附件与 OCR：附件解析是本机能力（不需要 key），OCR 才需要百度凭据
+    from . import attachments as _attach
+    from . import docparse as _docparse
+    from . import ocr as _ocr
+
+    a = _attach.AttachmentSettings.from_env()
+    dstat = _attach.dir_stats(a.dir)
+    print(f"附件解析    : {'✓ 开' if a.enabled else '✗ 关（ATTACH_ENABLED=0）'}"
+          f"｜支持 {len(_docparse.supported_extensions())} 种格式"
+          f"｜存放 {dstat['dir']}（{dstat['files']} 个文件 / {dstat['human']}）")
+    print(f"单文件上限  : {a.max_bytes_per_file // 1_000_000}MB，单篇最多 {a.max_files_per_article} 个"
+          f"｜LibreOffice {'可用' if _docparse.libreoffice_available() else '不可用（用内置解析器）'}")
+    print(f"OCR         : {_ocr.summary_line()}")
+    shadowed_ocr = env_file_shadowed_keys() & set(OCR_ENV_KEYS)
+    if shadowed_ocr:
+        print(f"  ⚠️ 系统环境变量里有 {'、'.join(sorted(shadowed_ocr))}，优先级高于 .env")
+    if args.test_ocr:
+        ok, msg = _ocr.health()
+        print(f"OCR 实测    : {'✅ ' if ok else '❌ '}{msg}")
+
+    # 登录墙：有会话就能抓认证后面的栏目；只有账号密码时（撞墙会自动登录）也报出来
     from . import auth as _auth
 
     sess = _auth.AuthSession()
+    _user, _pw = _auth.load_credentials()
     if sess.alive():
         print(f"登录会话    : ✓ {sess.alive()} 个有效 cookie（{_auth.COOKIE_FILE.name}）"
               f"，crawl 会带着它抓认证栏目")
@@ -197,6 +220,20 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("登录会话    : ⚠️ 有 cookie 文件但已全部过期 → python -m harness.cli login")
     else:
         print("登录会话    : ✗ 未登录（{0}）".format(_auth.login_hint()))
+    if _user and _pw:
+        print(f"账号凭据    : ✓ 已保存 {_auth.mask_username(_user)}"
+              f"（{_auth.CRED_FILE.name}，仅当前用户可读、不进 git）")
+    else:
+        print("账号凭据    : ✗ 未保存（Web 设置面板「🔐 账号与登录」里填，"
+              "撞到登录墙就能自动登录）")
+    print(f"自动登录    : {_auth.SETTINGS.describe()}")
+    if _auth.SETTINGS.ocr_captcha and not _ocr.SETTINGS.configured:
+        print("              ⚠️ 开了验证码 OCR 但 OCR 没配置 → 遇到验证码只能手填，"
+              "或改用 login --cookie")
+    shadowed_auth = env_file_shadowed_keys() & set(AUTH_ENV_KEYS)
+    if shadowed_auth:
+        print(f"              ⚠️ 系统环境变量里有 {'、'.join(sorted(shadowed_auth))}，"
+              f"优先级高于 .env")
     if args.test_web and searcher.available:
         t0 = time.time()
         res = searcher.search("全国大学生生命科学竞赛 官网", top_k=3)
@@ -223,6 +260,10 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         argv += ["--concurrency", str(args.concurrency)]
     if args.no_robots:
         argv += ["--no-robots"]
+    if args.no_attachments:
+        argv += ["--no-attachments"]
+    if getattr(args, "no_auto_login", False):
+        argv += ["--no-auto-login"]
     if args.reset:
         argv += ["--reset"]
     return crawl_main(argv)
@@ -283,12 +324,40 @@ def cmd_ask(args: argparse.Namespace) -> int:
         print("=" * 78)
         print(f"DRY-RUN：检索到 {len(ans.evidence)} 条证据（未调用 LLM）\n")
         print(agent.build_citations(ans))
+        cards = ans.cards or {}
         print("=" * 78)
+        stats = cards.get("stats") or {}
+        if stats.get("activities") or stats.get("files"):
+            print(f"\n卡片：活动 {stats.get('activities', 0)} 张"
+                  f"（命中已核验名录 {stats.get('matched', 0)}）"
+                  f"｜附件 {stats.get('files', 0)} 个｜关键时间 {stats.get('times', 0)} 条")
+            for a in (cards.get("activities") or []):
+                sc = a.get("scores") or {}
+                pts = []
+                if sc.get("best_zongce"):
+                    pts.append(f"综测 +{sc['best_zongce']:g}")
+                if sc.get("best_tuimian"):
+                    pts.append(f"推免 +{sc['best_tuimian']:g}")
+                dl = next((t["date"] for t in (a.get("times") or [])
+                           if t.get("is_deadline")), "")
+                print(f"  · {a.get('name','')}"
+                      f"{'｜' + '、'.join(pts) if pts else '｜（未匹配名录，无分值）'}"
+                      f"{'｜截止 ' + dl if dl else ''}")
+            for f in (cards.get("files") or []):
+                print(f"  📎 {f.get('file_name','')}（{f.get('file_kind','')}）{f.get('url','')}")
         if args.show_prompt:
             print("\n最终 Prompt（%d 字符）：\n" % len(ans.prompt))
             print(ans.prompt[:12000])
         else:
             print(f"\n最终 Prompt 共 {len(ans.prompt)} 字符（加 --show-prompt 可打印）")
+        if args.json:
+            Path(args.json).write_text(json.dumps({
+                "question": ans.question, "answer": "",
+                "subqueries": ans.subqueries, "error": "",
+                "cards": cards,
+                "evidence": [e.__dict__ for e in ans.evidence],
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"已写出 JSON：{args.json}", file=sys.stderr)
         st.close()
         return 0
 
@@ -300,17 +369,7 @@ def cmd_ask(args: argparse.Namespace) -> int:
             "answer": ans.text,
             "subqueries": ans.subqueries,
             "error": ans.error,
-            "evidence": [e.__dict__ for e in ans.evidence],
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"\n已写出 JSON：{args.json}", file=sys.stderr)
-    st.close()
-    return 0 if not ans.error else 1
-    if args.json:
-        Path(args.json).write_text(json.dumps({
-            "question": ans.question,
-            "answer": ans.text,
-            "subqueries": ans.subqueries,
-            "error": ans.error,
+            "cards": ans.cards or {},
             "evidence": [e.__dict__ for e in ans.evidence],
         }, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n已写出 JSON：{args.json}", file=sys.stderr)
@@ -706,7 +765,7 @@ def cmd_login(args: argparse.Namespace) -> int:
         print(f"\n✓ 已导入 {n} 个 cookie → {saved}")
         return _login_verify(sess, args.service)
 
-    # ---- ② 表单登录 ---- #
+    # ---- ② 表单登录（有验证码就自动 OCR） ---- #
     saved_user, saved_pw = A.load_credentials()
     user = args.user or saved_user
     pw = args.password or saved_pw
@@ -719,19 +778,36 @@ def cmd_login(args: argparse.Namespace) -> int:
         print("✗ 账号或密码为空", file=sys.stderr)
         return 1
 
+    settings = A.SETTINGS
+    if args.no_captcha:
+        from dataclasses import replace as _replace
+
+        settings = _replace(settings, ocr_captcha=False)
     print(f"\n登录 {A.CAS_BASE}/lyuapServer/login   service={args.service}")
-    res = sess.login(user, pw, service=args.service)
+    print(f"  （{settings.describe()}）")
+    res = sess.login(user, pw, service=args.service, settings=settings)
     print(res.debug())
     if not res.ok:
-        print("\n提示：如果登录页有验证码/滑块，脚本登录天然过不去，"
-              "改用  python -m harness.cli login --cookie", file=sys.stderr)
+        if res.need_captcha and not args.no_captcha:
+            print("\n验证码是图形验证码，OCR 没认出来。三条路：\n"
+                  "  ① 配好百度 OCR：python -m harness.cli ocr --api-key <AK> --secret-key <SK>\n"
+                  "  ② 再试一次（会换一张验证码）：python -m harness.cli login\n"
+                  "  ③ 干脆不碰密码：python -m harness.cli login --cookie", file=sys.stderr)
+        elif res.blockers:
+            print(f"\n提示：登录页要求 {('、'.join(res.blockers))}，脚本过不去，"
+                  "改用  python -m harness.cli login --cookie", file=sys.stderr)
+        else:
+            print("\n提示：账号密码要对（统一身份认证那套）；"
+                  "如果登录页有滑块/短信验证，改用  python -m harness.cli login --cookie",
+                  file=sys.stderr)
         return 1
 
     saved = sess.save_cookies()
     print(f"\n✓ 会话已保存 → {saved}（.auth/ 已 gitignore，别提交、别外发）")
     if not args.no_save:
         p = A.save_credentials(user, pw)
-        print(f"✓ 凭据已保存 → {p}（仅当前用户可读；不想要就 login --forget）")
+        print(f"✓ 凭据已保存 → {p}（仅当前用户可读；之后 crawl 撞到登录墙会自动用它登录；"
+              f"不想要就 login --forget）")
     return _login_verify(sess, args.service)
 
 
@@ -828,6 +904,281 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+def cmd_parse(args: argparse.Namespace) -> int:
+    """解析本地文件：验证「附件里的信息能不能被抽出来」。"""
+    from . import docparse
+    from . import ocr as ocr_mod
+
+    if args.no_ocr:
+        ocr_mod.SETTINGS.provider = "none"
+    paths: list[Path] = []
+    for raw in args.path:
+        p = Path(raw)
+        if p.is_dir():
+            paths.extend(sorted(q for q in p.rglob("*") if q.is_file()))
+        else:
+            paths.append(p)
+    if not paths:
+        print("没有可解析的文件", file=sys.stderr)
+        return 1
+
+    if not ocr_mod.enabled():
+        print(f"（{ocr_mod.summary_line()}；本次图片里的文字不会被提取）")
+
+    outdir = Path(args.save) if args.save else None
+    if outdir:
+        outdir.mkdir(parents=True, exist_ok=True)
+    failed = 0
+    for p in paths:
+        if not p.is_file():
+            print(f"✗ {p}：文件不存在")
+            failed += 1
+            continue
+        data = p.read_bytes()
+        res = docparse.parse_bytes(data, p.name, use_ocr=not args.no_ocr)
+        kind = res.kind or docparse.ext_of(p.name)
+        flag = "✓" if res.text.strip() else ("!" if res.error or res.note else "?")
+        print(f"\n{flag} {p.name}")
+        print(f"   {len(data) // 1024}KB · .{kind} · 解析器 {res.parser or '-'} · {res.summary()}")
+        if res.tables:
+            print(f"   表格 {len(res.tables)} 张：" +
+                  "、".join(f"{len(t)}行" for t in res.tables[:4]))
+        if res.images:
+            print(f"   内嵌图片 {len(res.images)} 张"
+                  + (f"，OCR {res.ocr_used} 张（{res.ocr_chars} 字）" if res.ocr_used else ""))
+        if res.error:
+            print(f"   ✗ {res.error}")
+            failed += 1
+        if res.text.strip() and not args.quiet:
+            limit = len(res.text) if args.full else args.chars
+            body = res.text[:limit]
+            print("   " + body.replace("\n", "\n   ")
+                  + ("\n   …（还有 %d 字，用 --full 看全部）"
+                     % (len(res.text) - limit) if len(res.text) > limit else ""))
+        if outdir:
+            out = outdir / (p.stem + ".txt")
+            out.write_text(res.text, encoding="utf-8")
+            print(f"   → 已写出 {out}")
+    if outdir:
+        print(f"\n共 {len(paths)} 个文件，失败 {failed} 个，输出目录 {outdir}")
+    return 1 if failed == len(paths) else 0
+
+
+def cmd_attach(args: argparse.Namespace) -> int:
+    """下载并解析库内通知的附件。"""
+    import json as jsonmod
+
+    from . import attachments as attach_mod
+    from . import ocr as ocr_mod
+    from .auth import AuthSession
+    from .fetcher import Fetcher
+
+    st = Store(SETTINGS.crawl.db_path)
+    s = attach_mod.AttachmentSettings.from_env()
+    if args.max_files:
+        s.max_files_per_article = args.max_files
+    if args.no_ocr:
+        s.ocr = False
+
+    session = AuthSession()
+    if session.alive() == 0:
+        session = None
+    fetcher = Fetcher(user_agent=SETTINGS.crawl.user_agent, timeout=s.timeout,
+                      retries=SETTINGS.crawl.retries, delay=SETTINGS.crawl.delay,
+                      auth_session=session)
+
+    if args.article:
+        art = st.get_article(int(args.article), max_chars=1) or {}
+        urls = art.get("attachments") or []
+        if isinstance(urls, str):
+            try:
+                urls = jsonmod.loads(urls or "[]")
+            except jsonmod.JSONDecodeError:
+                urls = []
+        targets = [{"id": int(args.article), "title": art.get("title") or "", "attachments": urls}]
+    else:
+        fn = st.articles_with_attachments if args.all else st.articles_with_unparsed_attachments
+        targets = fn(limit=int(args.limit))
+
+    if not targets:
+        print("没有需要处理的附件（都解析过了；要重跑加 --all）")
+        st.close()
+        return 0
+
+    print(f"附件目录    : {s.dir}")
+    print(f"OCR         : {ocr_mod.summary_line()}")
+    print(f"待处理通知  : {len(targets)} 篇\n")
+
+    totals = {"files": 0, "with_text": 0, "bytes": 0, "ocr": 0, "failed": 0}
+    for i, row in enumerate(targets, 1):
+        urls = row.get("attachments") or []
+        if isinstance(urls, str):
+            try:
+                urls = jsonmod.loads(urls or "[]")
+            except jsonmod.JSONDecodeError:
+                urls = []
+        if not urls:
+            continue
+        print(f"[{i}/{len(targets)}] {str(row.get('title') or '')[:52]}")
+        res = attach_mod.process_article(st, fetcher, int(row["id"]), urls,
+                                         settings=s, force=args.force,
+                                         progress=lambda m: print(m, flush=True))
+        for a in st.get_attachments(int(row["id"])):
+            mark = "✓" if (a.get("text") or "").strip() else ("✗" if a.get("error") else "·")
+            print(f"    {mark} {str(a.get('filename') or '')[:40]:<42}"
+                  f"{(a.get('bytes') or 0) // 1024:>6}KB  {str(a.get('parser') or '-'):<16}"
+                  f"{len(a.get('text') or '') :>7} 字"
+                  + (f"  OCR{a['ocr_used']}张" if a.get("ocr_used") else "")
+                  + (f"  {str(a.get('error'))[:40]}" if a.get("error") else ""))
+        totals["files"] += res["files"]
+        totals["with_text"] += res["with_text"]
+        totals["bytes"] += res["bytes"]
+        totals["ocr"] += res["ocr"]
+        totals["failed"] += len([e for e in res["errors"] if e and not e.startswith("skip:")])
+
+    print("\n" + "=" * 70)
+    print(f"附件 {totals['files']} 个｜解析出正文 {totals['with_text']} 个｜"
+          f"失败 {totals['failed']} 个｜OCR {totals['ocr']} 张｜"
+          f"共 {attach_mod.human_size(totals['bytes'])}")
+    dstat = attach_mod.dir_stats(s.dir)
+    print(f"附件目录占用：{dstat['files']} 个文件 / {dstat['human']}（{dstat['dir']}）")
+    print("下一步：python -m harness.cli ask \"…\"（附件正文已进检索）")
+    st.close()
+    return 0
+
+
+def cmd_attachments(args: argparse.Namespace) -> int:
+    """列出已下载的附件（含解析状态）。"""
+    from . import attachments as attach_mod
+
+    st = Store(SETTINGS.crawl.db_path)
+    if args.search:
+        rows = st.search_attachments(args.search, top_k=int(args.limit))
+        if not rows:
+            print("附件正文里没有命中。")
+        for r in rows:
+            print(f"\n[{r['attachment_id']}] {r['filename']}  （分数 {r['score']:.1f}）")
+            print(f"    所属通知：{r['title'][:60]}  {r['pub_date']}")
+            print(f"    原文：{r['article_url']}")
+            print(f"    片段：{r['snippet'][:200]}")
+        st.close()
+        return 0
+
+    if args.article:
+        rows = st.get_attachments(int(args.article))
+        art = st.get_article(int(args.article), max_chars=1) or {}
+        print(f"《{art.get('title') or args.article}》的附件：")
+    else:
+        with st._lock:                                     # noqa: SLF001 - 只读列表
+            rows = [dict(r) for r in st.conn.execute(
+                "SELECT * FROM attachment ORDER BY id DESC LIMIT ?",
+                (int(args.limit),)).fetchall()]
+    if not rows:
+        print("还没有下载任何附件。"
+              "先跑：python -m harness.cli attach（或 crawl 时自动抓）")
+        st.close()
+        return 0
+    print(f"{'id':>5} {'格式':<6} {'大小':>8} {'字符':>8} {'OCR':>4}  存盘路径 / 错误")
+    for a in rows:
+        err = str(a.get("error") or "")
+        print(f"{a['id']:>5} {str(a.get('kind') or '-'):<6} "
+              f"{(a.get('bytes') or 0) // 1024:>6}KB {len(a.get('text') or ''):>8} "
+              f"{a.get('ocr_used') or 0:>4}  {a.get('stored') or ''}"
+              + (f"   ✗ {err[:40]}" if err and not err.startswith("skip:") else ""))
+        if a.get("note"):
+            print(f"{'':>5}  ↳ {str(a['note'])[:110]}")
+    st.close()
+    return 0
+
+
+def cmd_ocr(args: argparse.Namespace) -> int:
+    """配置 / 测试 OCR。"""
+    from . import ocr as ocr_mod
+    from .config import apply_ocr_settings, clear_ocr_settings
+
+    if args.clear:
+        res = clear_ocr_settings()
+        print("已清除 OCR 凭据" + (f"（{ENV_FILE} 已更新）" if res["wrote"] else ""))
+        if res["warning"]:
+            print("⚠️ " + res["warning"])
+        return 0
+
+    if args.image:
+        p = Path(args.image)
+        if not p.is_file():
+            print(f"✗ {p} 不存在", file=sys.stderr)
+            return 1
+        data = p.read_bytes()
+        payload = ocr_mod.prepare_image(data, name=p.name)
+        if payload.error:
+            print(f"⚠️ 图片预处理：{payload.error}")
+        if not ocr_mod.enabled():
+            print("尚未配置 OCR。" + ocr_mod.summary_line())
+            print("先跑： python -m harness.cli ocr --api-key <AK> --secret-key <SK>")
+            return 2
+        res = ocr_mod.recognize_image(payload.data or data, name=p.name)
+        if res.error:
+            print(f"✗ {res.error}", file=sys.stderr)
+            return 1
+        print(f"✓ {res.provider} {res.engine} · {res.ms}ms · {len(res.text)} 字")
+        print(res.text)
+        return 0
+
+    changed = any([args.api_key, args.secret_key, args.provider, args.standard])
+    if changed:
+        verify = not args.no_verify
+        api_key = (args.api_key or "").strip()
+        secret = (args.secret_key or "").strip()
+        provider = args.provider or ("baidu" if (api_key or secret) else None)
+        if verify and provider == "baidu":
+            probe = ocr_mod.OCRSettings(
+                provider="baidu",
+                api_key=api_key or ocr_mod.SETTINGS.api_key,
+                secret_key=secret or ocr_mod.SETTINGS.secret_key,
+                accurate=False if args.standard else ocr_mod.SETTINGS.accurate,
+            )
+            if not probe.configured:
+                print("⚠️ API Key / Secret Key 不完整，跳过验证")
+            else:
+                print("正在用一张测试图真实调用百度 OCR…")
+                ok, msg = ocr_mod.health(probe)
+                print(("✅ " if ok else "❌ ") + msg)
+                if not ok and not args.no_verify:
+                    print("未保存。确认 key 有「通用文字识别」权限后重试，"
+                          "或加 --no-verify 强制保存。")
+                    return 2
+        res = apply_ocr_settings(provider=provider, api_key=api_key or None,
+                                 secret_key=secret or None,
+                                 accurate=(False if args.standard else None))
+        if res["warning"]:
+            print("⚠️ " + res["warning"])
+        print(f"已更新 {'、'.join(res['applied']) or '（无改动）'}"
+              + (f" → {ENV_FILE}" if res["wrote"] else "（仅本次运行生效）"))
+        shadowed = env_file_shadowed_keys() & set(OCR_ENV_KEYS)
+        if shadowed:
+            print(f"⚠️ 系统环境变量里有 {'、'.join(sorted(shadowed))}，"
+                  f"优先级高于 .env，改了可能不生效")
+        print(ocr_mod.summary_line())
+        return 0
+
+    print(ocr_mod.summary_line())
+    print(f"凭据来源    : {ENV_FILE}")
+    shadowed = env_file_shadowed_keys() & set(OCR_ENV_KEYS)
+    if shadowed:
+        print(f"⚠️ 被系统环境变量覆盖：{'、'.join(sorted(shadowed))}")
+    print("\n申请地址：https://console.bce.baidu.com/ai/#/ai/ocr/overview/index")
+    print("用法示例：")
+    print("  python -m harness.cli ocr --api-key <AK> --secret-key <SK>")
+    print("  python -m harness.cli ocr --test")
+    print("  python -m harness.cli ocr --image 报名表截图.png")
+    if args.test:
+        ok, msg = ocr_mod.health()
+        print(f"\n实测：{'✅ ' if ok else '❌ '}{msg}")
+        return 0 if ok else 2
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="harness", description="SCAU 站点群 LLM 检索 Harness",
@@ -844,6 +1195,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("doctor", help="自检环境/种子/数据库/LLM 连通性")
     p.add_argument("--no-llm", action="store_true", help="跳过 LLM 连通性测试")
     p.add_argument("--test-web", action="store_true", help="实测公网搜索")
+    p.add_argument("--test-ocr", action="store_true", help="实测 OCR（会真的调一次接口）")
     p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("crawl", help="按范围抓取 SCAU 栏目群")
@@ -856,6 +1208,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-robots", action="store_true")
     p.add_argument("--no-auth", action="store_true",
                    help="忽略 .auth/ 里的会话，按未登录状态抓（登录墙栏目仍会跳过）")
+    p.add_argument("--no-auto-login", action="store_true",
+                   help="撞到登录墙时不自动登录（默认会用已保存的账号自动登录，验证码走 OCR）")
+    p.add_argument("--no-attachments", action="store_true",
+                   help="不下载/解析附件（默认会抓，附件正文进检索）")
     p.add_argument("--reset", action="store_true")
     p.set_defaults(func=cmd_crawl)
 
@@ -870,6 +1226,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--service", default=None,
                    help="登录后跳转的目标地址，默认融合门户 http://portal.scau.edu.cn/")
     p.add_argument("--no-save", action="store_true", help="不把账号密码写进 .auth/credentials.json")
+    p.add_argument("--no-captcha", action="store_true",
+                   help="不尝试 OCR 识别验证码（遇到验证码直接报错，方便对照排查）")
     p.add_argument("--forget", action="store_true", help="清除已保存的会话与凭据")
     p.set_defaults(func=cmd_login)
 
@@ -958,6 +1316,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("calc", help="计算器数据自检：专业/课程/门槛/活动/口径")
     p.set_defaults(func=cmd_calc)
+
+    # ---------------- 附件 / 文档解析 / OCR ---------------- #
+    p = sub.add_parser("parse", help="解析本地文件（docx/xlsx/pdf/doc/xls/图片/压缩包…）并打印文本")
+    p.add_argument("path", nargs="+", help="一个或多个文件路径")
+    p.add_argument("--chars", type=int, default=1200, help="每个文件打印多少字符（默认 1200）")
+    p.add_argument("--full", action="store_true", help="打印全部正文（可能很长）")
+    p.add_argument("--no-ocr", action="store_true", help="跳过图片 OCR")
+    p.add_argument("--save", help="把解析结果写到这个目录（每个文件一个 .txt）")
+    p.add_argument("-q", "--quiet", action="store_true", help="只打印摘要行")
+    p.set_defaults(func=cmd_parse)
+
+    p = sub.add_parser("attach", help="下载并解析库内通知的附件（存到 data/attachments/）")
+    p.add_argument("--limit", type=int, default=10, help="最多处理几篇通知（默认 10）")
+    p.add_argument("--article", type=int, default=0, help="只处理这一篇文章的附件")
+    p.add_argument("--all", action="store_true", help="连已经解析过的也重跑")
+    p.add_argument("--force", action="store_true", help="忽略缓存，重新下载")
+    p.add_argument("--no-ocr", action="store_true", help="本次不调用 OCR（图片里文字不提取）")
+    p.add_argument("--max-files", type=int, default=0, help="覆盖单篇通知的附件数上限")
+    p.set_defaults(func=cmd_attach)
+
+    p = sub.add_parser("attachments", help="列出已下载的附件及其解析状态")
+    p.add_argument("--article", type=int, default=0, help="只看某篇文章的附件")
+    p.add_argument("--limit", type=int, default=40)
+    p.add_argument("--search", default="", help="在附件正文里搜关键词")
+    p.set_defaults(func=cmd_attachments)
+
+    p = sub.add_parser("ocr", help="配置 / 测试 OCR（百度智能云），图片与扫描件靠它提字")
+    p.add_argument("--api-key", help="百度 OCR 应用的 API Key")
+    p.add_argument("--secret-key", help="百度 OCR 应用的 Secret Key")
+    p.add_argument("--provider", choices=["baidu", "none"], help="OCR 服务商（none=关闭）")
+    p.add_argument("--standard", action="store_true", help="用标准版（默认高精度版）")
+    p.add_argument("--test", action="store_true", help="用一张测试图真实调一次接口")
+    p.add_argument("--image", help="直接对这张图片做一次识别（验证效果）")
+    p.add_argument("--clear", action="store_true", help="清除已保存的 OCR 凭据")
+    p.add_argument("--no-verify", action="store_true", help="保存前不做真实调用验证")
+    p.set_defaults(func=cmd_ocr)
 
     return ap
 

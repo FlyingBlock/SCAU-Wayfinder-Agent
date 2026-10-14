@@ -52,8 +52,21 @@ class FetchResult:
         return bool(self.final_url) and self.final_url != self.url
 
 
+#: 本机地址：不强制改 https（本地假服务器/自建服务多为纯 http，改了必然连不上）
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
+def is_loopback(url: str) -> bool:
+    host = urllib.parse.urlsplit(url).netloc.split("@")[-1].split(":")[0].lower()
+    return host in _LOOPBACK_HOSTS
+
+
 def normalize_url(url: str, prefer_https: bool = True) -> str:
-    """统一 https、去 fragment、去跟踪参数、小写域名；保留 query（就业网按参数寻址）。"""
+    """统一 https、去 fragment、去跟踪参数、小写域名；保留 query（就业网按参数寻址）。
+
+    例外：`localhost` / `127.0.0.1` 之类本机地址保持原协议——把 http 改成 https
+    只会让本地服务（测试用的假站点、自建 PDF 服务）直接连不上。
+    """
     if not url:
         return ""
     url = url.strip()
@@ -61,7 +74,7 @@ def normalize_url(url: str, prefer_https: bool = True) -> str:
         url = "https:" + url
     p = urllib.parse.urlsplit(url)
     scheme = p.scheme.lower()
-    if prefer_https and scheme in ("http", "https"):
+    if prefer_https and scheme in ("http", "https") and not is_loopback(url):
         scheme = "https"
     elif not scheme:
         scheme = "https"
@@ -163,6 +176,7 @@ class Fetcher:
         # 登录墙后面的页面才拿得到（指南 §12.4）。
         self.auth = auth_session
         self._cache: dict[str, FetchResult] = {}
+        self._bin_cache: dict[str, dict] = {}          # 附件二进制（按需，默认不缓存）
         self._last: dict[str, float] = {}          # 按域名限速
         self._lock = threading.Lock()
         self._robots: dict[str, set[str]] = {}
@@ -298,3 +312,103 @@ class Fetcher:
 
         self.stats["errors"] += 1
         return FetchResult(url=url, error=last_err or "unknown", final_url=url)
+
+    # ---------- 缓存 ----------
+    def forget(self, url: str) -> None:
+        """丢掉某个 URL 的内存缓存。
+
+        登录墙场景要用：第一次拿回来的是登录页 HTML（被缓存了），
+        自动登录成功之后必须真的重发一次请求，否则读到的还是那份登录页。
+        """
+        key = normalize_url(url) or url
+        self._cache.pop(key, None)
+        self._bin_cache.pop("bin:" + key, None)
+
+    # ---------- 二进制下载（附件：pdf/docx/xlsx/图片…） ----------
+    def fetch_bytes(self, url: str, *, max_bytes: int = 25_000_000,
+                    check_robots: bool = False, use_auth: bool = False,
+                    force: bool = False, binary_cache: bool = False) -> dict:
+        """下载二进制内容，返回 dict（不抛异常）。
+
+        `fetch()` 会把响应体当文本解码，附件必须先拿原始字节——PDF/Office 被
+        utf-8 解一遍再解回来是不可逆的。这里独立一条路径：
+          · Content-Length 超过 max_bytes 直接拒（省流量）
+          · 流式累积，超过 max_bytes 立即中断（防止服务器不报长度）
+          · 只按需缓存（附件默认不入内存缓存，一次抓取里靠 URL/sha1 去重）
+          · 默认不查 robots：附件是文章正文里链出来的子资源，正文已经查过，
+            再为每个附件拉一份 robots.txt 既慢又容易被误判（可显式打开）。
+        """
+        url = normalize_url(url)
+        out = {"url": url, "ok": False, "data": b"", "error": "", "status": 0,
+               "content_type": "", "content_disposition": "", "final_url": url,
+               "bytes": 0, "elapsed": 0.0}
+        if not url:
+            out["error"] = "empty_url"
+            return out
+        key = "bin:" + url
+        if binary_cache and not force and self.cache_enabled:
+            hit = self._bin_cache.get(key)
+            if hit is not None:
+                self.stats["cache_hits"] += 1
+                return dict(hit)
+        if check_robots and not use_auth and not self.robots_allows(url):
+            out["error"] = "robots_disallow"
+            return out
+
+        last_err = ""
+        t0 = time.time()
+        for attempt in range(self.retries + 1):
+            self._throttle(url)
+            self.stats["requests"] += 1
+            try:
+                with self._open(url, use_auth=use_auth) as r:
+                    ctype = r.headers.get("Content-Type", "") or ""
+                    cdisp = r.headers.get("Content-Disposition", "") or ""
+                    try:
+                        declared = int(r.headers.get("Content-Length") or 0)
+                    except ValueError:
+                        declared = 0
+                    if declared and declared > max_bytes:
+                        out["error"] = f"too_large({declared})"
+                        return out
+                    chunks: list[bytes] = []
+                    got = 0
+                    while True:
+                        piece = r.read(65536)
+                        if not piece:
+                            break
+                        got += len(piece)
+                        if got > max_bytes:
+                            out["error"] = f"too_large(>{max_bytes})"
+                            return out
+                        chunks.append(piece)
+                    raw = b"".join(chunks)
+                    raw = _decompress(raw, r.headers.get("Content-Encoding", ""))
+                    out.update({
+                        "ok": True, "data": raw, "status": getattr(r, "status", 200),
+                        "content_type": ctype, "content_disposition": cdisp,
+                        "final_url": r.geturl(), "bytes": len(raw),
+                        "elapsed": time.time() - t0,
+                    })
+                    self.stats["bytes"] += len(raw)
+                    if binary_cache and self.cache_enabled:
+                        self._bin_cache[key] = dict(out)
+                    return out
+            except urllib.error.HTTPError as e:
+                last_err = f"http_{e.code}"
+                if e.code in (404, 403, 401, 410):
+                    break
+                if e.code in (429, 503, 502, 504):
+                    time.sleep(1.5 * (attempt + 1))
+            except urllib.error.URLError as e:
+                last_err = f"urlerror_{type(e.reason).__name__}" if hasattr(e, "reason") else "urlerror"
+            except Exception as e:                          # noqa: BLE001
+                last_err = type(e).__name__
+                if "IncompleteRead" in last_err:
+                    break
+            if attempt < self.retries:
+                time.sleep(0.6 * (attempt + 1))
+        self.stats["errors"] += 1
+        out["error"] = last_err or "unknown"
+        out["elapsed"] = time.time() - t0
+        return out

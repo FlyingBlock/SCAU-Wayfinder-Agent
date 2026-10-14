@@ -46,6 +46,16 @@ LLM_PRESETS = (
      "model": "Qwen/Qwen2.5-14B-Instruct", "note": "key 随便填一个非空值"},
 )
 
+# OCR（图片 / 扫描件里的文字）相关变量。和 LLM 那三项一样，界面上填的会写进 .env，
+# 走同一套 read_env_file / write_env_file，两个入口不会写出两种格式。
+OCR_ENV_KEYS = ("OCR_PROVIDER", "BAIDU_OCR_API_KEY", "BAIDU_OCR_SECRET_KEY",
+                "OCR_ACCURATE", "BAIDU_OCR_ENDPOINT")
+
+# 登录墙 / 自动登录相关变量。**只有非机密的行为开关放这里**：
+# 账号密码永远不进 .env，只落在 .auth/credentials.json（已在 .gitignore）。
+AUTH_ENV_KEYS = ("AUTH_AUTO_LOGIN", "AUTH_OCR_CAPTCHA", "AUTH_CAPTCHA_ROUNDS",
+                 "AUTH_SERVICE", "AUTH_CAPTCHA_URL")
+
 
 def _first_existing(*candidates: Path) -> Path:
     """按顺序返回第一个存在的文件；都不存在时返回最后一个（便于报错与首次创建）。
@@ -343,3 +353,131 @@ def apply_llm_settings(*, api_key: str | None = None, base_url: str | None = Non
 
     return {"settings": llm, "applied": sorted(updates), "wrote": wrote,
             "warning": warning}
+
+
+# --------------------------------------------------------------------------- #
+def apply_ocr_settings(*, provider: str | None = None, api_key: str | None = None,
+                       secret_key: str | None = None, accurate: bool | None = None,
+                       persist: bool = True, env_file: Path | None = None) -> dict:
+    """把一份 OCR 配置应用到当前进程并按需落盘。与 `apply_llm_settings` 同构。
+
+    留空（None）表示「沿用现在的值」——界面上不会回显 secret，不能要求重填。
+    `harness.ocr.SETTINGS` 是原地替换的，改完下一个附件解析就用新配置。
+    """
+    updates: dict[str, str] = {}
+    if provider is not None and provider.strip():
+        p = provider.strip().lower()
+        if p in ("baidu", "none", "off", "disabled", ""):
+            updates["OCR_PROVIDER"] = "none" if p in ("none", "off", "disabled", "") else p
+    if api_key is not None and api_key.strip():
+        updates["BAIDU_OCR_API_KEY"] = api_key.strip()
+    if secret_key is not None and secret_key.strip():
+        updates["BAIDU_OCR_SECRET_KEY"] = secret_key.strip()
+    if accurate is not None:
+        updates["OCR_ACCURATE"] = "1" if accurate else "0"
+
+    for key, val in updates.items():
+        os.environ[key] = val
+
+    warning = ""
+    wrote = False
+    if updates and persist:
+        try:
+            write_env_file(updates, env_file=env_file)
+            wrote = True
+        except OSError as e:
+            warning = f"OCR 配置已在本次运行中生效，但写入 .env 失败：{e}"
+
+    # 让 harness.ocr.SETTINGS 原地更新（不重新 import 模块，避免循环依赖问题）
+    settings = None
+    try:
+        from . import ocr as ocr_mod
+
+        settings = ocr_mod.refresh_settings()
+    except Exception as e:                                    # noqa: BLE001
+        warning = warning or f"{type(e).__name__}: {e}"
+
+    return {"settings": settings, "applied": sorted(updates), "wrote": wrote,
+            "warning": warning}
+
+
+def clear_ocr_settings(*, persist: bool = True, env_file: Path | None = None) -> dict:
+    """清掉 OCR 凭据（界面上「清除」按钮用）。"""
+    for key in ("BAIDU_OCR_API_KEY", "BAIDU_OCR_SECRET_KEY"):
+        os.environ.pop(key, None)
+    os.environ["OCR_PROVIDER"] = "none"
+    updates = {"OCR_PROVIDER": "none", "BAIDU_OCR_API_KEY": "", "BAIDU_OCR_SECRET_KEY": ""}
+    warning = ""
+    wrote = False
+    if persist:
+        try:
+            write_env_file(updates, env_file=env_file)
+            wrote = True
+        except OSError as e:
+            warning = f"清除只对本次运行生效，写入 .env 失败：{e}"
+    settings = None
+    try:
+        from . import ocr as ocr_mod
+
+        settings = ocr_mod.refresh_settings()
+    except Exception as e:                                    # noqa: BLE001
+        warning = warning or f"{type(e).__name__}: {e}"
+    return {"settings": settings, "applied": sorted(updates), "wrote": wrote,
+            "warning": warning}
+
+
+# --------------------------------------------------------------------------- #
+# 登录墙 / 自动登录的**行为开关**（账号密码另有 .auth/credentials.json，见 harness/auth.py）
+# --------------------------------------------------------------------------- #
+def apply_auth_settings(*, auto_login: bool | None = None, ocr_captcha: bool | None = None,
+                        captcha_rounds: int | None = None, service: str | None = None,
+                        captcha_url: str | None = None, persist: bool = True,
+                        env_file: Path | None = None) -> dict:
+    """把一份「登录行为」配置应用到当前进程并按需落盘 `.env`。
+
+    与 `apply_llm_settings` / `apply_ocr_settings` 同构。区别是这几个开关**总是全量写**：
+    界面上复选框的状态就是用户的意思，不像 key 那样存在「留空=不改动」的语义。
+    字符串项（service / captcha_url）留空表示清掉。
+    返回 `{"settings", "applied", "wrote", "warning"}`，永不抛异常。
+    """
+    updates: dict[str, str] = {}
+    if auto_login is not None:
+        updates["AUTH_AUTO_LOGIN"] = "1" if auto_login else "0"
+    if ocr_captcha is not None:
+        updates["AUTH_OCR_CAPTCHA"] = "1" if ocr_captcha else "0"
+    if captcha_rounds is not None:
+        updates["AUTH_CAPTCHA_ROUNDS"] = str(max(1, min(int(captcha_rounds), 8)))
+    if service is not None:
+        updates["AUTH_SERVICE"] = service.strip()
+    if captcha_url is not None:
+        updates["AUTH_CAPTCHA_URL"] = captcha_url.strip()
+
+    for key, val in updates.items():
+        os.environ[key] = val
+
+    warning = ""
+    wrote = False
+    if updates and persist:
+        try:
+            write_env_file(updates, env_file=env_file)
+            wrote = True
+        except OSError as e:
+            warning = f"登录配置已在本次运行中生效，但写入 .env 失败：{e}"
+
+    settings = None
+    try:
+        from . import auth as auth_mod
+
+        settings = auth_mod.refresh_settings()
+    except Exception as e:                                    # noqa: BLE001
+        warning = warning or f"{type(e).__name__}: {e}"
+    return {"settings": settings, "applied": sorted(updates), "wrote": wrote,
+            "warning": warning}
+
+
+def clear_auth_credentials() -> dict:
+    """清掉保存的账号密码（`.auth/credentials.json`）。开关本身保留。"""
+    from . import auth as auth_mod
+
+    existed = auth_mod.forget_credentials()
+    return {"removed": existed, "state": auth_mod.credentials_state()}

@@ -86,6 +86,40 @@ CREATE INDEX IF NOT EXISTS idx_crawllog_ts ON crawl_log(ts DESC);
 CREATE VIRTUAL TABLE IF NOT EXISTS article_fts USING fts5(
   title, body, tokenize='unicode61 remove_diacritics 2'
 );
+
+-- 附件：下载到 data/attachments/ 的正文附件与图片，正文与表格抽成 text 供检索。
+-- 与 article 是一对多；同一 URL 只存一行（url 唯一），
+-- article_id 记「最先收录它的那篇通知」，检索时按 URL 反向关联到引用它的文章。
+CREATE TABLE IF NOT EXISTS attachment (
+  id           INTEGER PRIMARY KEY,
+  article_id   INTEGER REFERENCES article(id) ON DELETE CASCADE,
+  url          TEXT NOT NULL,
+  filename     TEXT,
+  kind         TEXT,
+  content_type TEXT,
+  stored       TEXT,
+  sha1         TEXT,
+  bytes        INTEGER DEFAULT 0,
+  text         TEXT,
+  parser       TEXT,
+  note         TEXT,
+  error        TEXT,
+  tables       INTEGER DEFAULT 0,
+  images       INTEGER DEFAULT 0,
+  ocr_used     INTEGER DEFAULT 0,
+  ocr_chars    INTEGER DEFAULT 0,
+  ms           INTEGER DEFAULT 0,
+  extra        TEXT,
+  fetched_at   TEXT NOT NULL,
+  parsed_at    TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_attachment_url  ON attachment(url);
+CREATE INDEX IF NOT EXISTS idx_attachment_article    ON attachment(article_id);
+CREATE INDEX IF NOT EXISTS idx_attachment_sha1       ON attachment(sha1);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS attachment_fts USING fts5(
+  filename, text, tokenize='unicode61 remove_diacritics 2'
+);
 """
 
 # 中日韩统一表意文字 + 假名 + 谚文
@@ -467,9 +501,202 @@ class Store:
                 "SELECT COUNT(*) c FROM site WHERE last_error IS NOT NULL AND last_error<>''"
             ).fetchone()["c"]
             logs = self.conn.execute("SELECT COUNT(*) c FROM crawl_log").fetchone()["c"]
+            try:
+                at = self.conn.execute("SELECT COUNT(*) c FROM attachment").fetchone()["c"]
+                at_text = self.conn.execute(
+                    "SELECT COUNT(*) c FROM attachment WHERE text IS NOT NULL AND text<>''"
+                ).fetchone()["c"]
+                at_bytes = self.conn.execute(
+                    "SELECT COALESCE(SUM(bytes),0) s FROM attachment").fetchone()["s"]
+            except sqlite3.Error:
+                at = at_text = at_bytes = 0
         return {"articles": total, "sites": sites, "with_date": withdate,
-                "site_errors": errors, "crawl_logs": logs}
+                "site_errors": errors, "crawl_logs": logs,
+                "attachments": at, "attachments_with_text": at_text,
+                "attachment_bytes": int(at_bytes or 0)}
+
+    # ------------------------------------------------------------------ #
+    # 附件（下载到 data/attachments/ 的文件）
+    # ------------------------------------------------------------------ #
+    def upsert_attachment(self, *, article_id: int, url: str, filename: str = "",
+                          kind: str = "", content_type: str = "", stored: str = "",
+                          sha1: str = "", bytes: int = 0, text: str = "",
+                          parser: str = "", note: str = "", error: str = "",
+                          tables: int = 0, images: int = 0, ocr_used: int = 0,
+                          ocr_chars: int = 0, ms: int = 0, extra: str = "") -> int:
+        """写入/更新一份附件的解析结果，并重建它的 FTS 行。返回 attachment.id。"""
+        now = datetime.datetime.now().isoformat(timespec="seconds")
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT id, article_id FROM attachment WHERE url=?", (url,)).fetchone()
+            if row:
+                aid = int(row["id"])
+                # 同一附件被多篇通知引用时，保留最先收录它的那篇（检索会按 url 反查）
+                link = int(article_id or row["article_id"] or 0)
+                self.conn.execute(
+                    """UPDATE attachment SET article_id=?, filename=?, kind=?, content_type=?,
+                           stored=?, sha1=?, bytes=?, text=?, parser=?, note=?, error=?,
+                           tables=?, images=?, ocr_used=?, ocr_chars=?, ms=?, extra=?,
+                           parsed_at=? WHERE id=?""",
+                    (link, filename, kind, content_type, stored, sha1, bytes,
+                     text, parser, note, error, tables, images, ocr_used, ocr_chars,
+                     ms, extra, now, aid),
+                )
+            else:
+                cur = self.conn.execute(
+                    """INSERT INTO attachment (article_id,url,filename,kind,content_type,stored,
+                           sha1,bytes,text,parser,note,error,tables,images,ocr_used,ocr_chars,
+                           ms,extra,fetched_at,parsed_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (article_id, url, filename, kind, content_type, stored, sha1, bytes,
+                     text, parser, note, error, tables, images, ocr_used, ocr_chars,
+                     ms, extra, now, now),
+                )
+                aid = int(cur.lastrowid)
+            self.conn.execute("DELETE FROM attachment_fts WHERE rowid=?", (aid,))
+            self.conn.execute(
+                "INSERT INTO attachment_fts (rowid, filename, text) VALUES (?,?,?)",
+                (aid, tokenize_for_index(filename), tokenize_for_index(text)),
+            )
+            self.conn.commit()
+            return aid
+
+    def get_attachment(self, attachment_id: int) -> dict | None:
+        with self._lock:
+            r = self.conn.execute("SELECT * FROM attachment WHERE id=?",
+                                  (int(attachment_id),)).fetchone()
+        return dict(r) if r else None
+
+    def get_attachment_by_url(self, url: str) -> dict | None:
+        with self._lock:
+            r = self.conn.execute("SELECT * FROM attachment WHERE url=?",
+                                  (url,)).fetchone()
+        return dict(r) if r else None
+
+    def get_attachments(self, article_id: int) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM attachment WHERE article_id=? ORDER BY id",
+                (int(article_id),)).fetchall()
+        return [dict(r) for r in rows]
+
+    def attachments_for_articles(self, article_ids: Iterable[int]) -> dict[int, list[dict]]:
+        """批量取多篇文章的附件（卡片层要按证据编号展示解析摘要）。"""
+        ids = [int(i) for i in article_ids if i]
+        if not ids:
+            return {}
+        out: dict[int, list[dict]] = {}
+        with self._lock:
+            for chunk in _chunks(ids, 400):
+                marks = ",".join("?" * len(chunk))
+                rows = self.conn.execute(
+                    f"SELECT * FROM attachment WHERE article_id IN ({marks}) ORDER BY id",
+                    chunk).fetchall()
+                for r in rows:
+                    d = dict(r)
+                    out.setdefault(int(d["article_id"] or 0), []).append(d)
+        return out
+
+    def attachment_text_map(self, article_id: int, *, max_chars_each: int = 1200,
+                            max_total: int = 6000) -> str:
+        """把一篇文章所有附件的正文拼成一段（给证据/模型看）。"""
+        parts: list[str] = []
+        used = 0
+        for a in self.get_attachments(article_id):
+            text = (a.get("text") or "").strip()
+            if not text:
+                continue
+            piece = f"【附件：{a.get('filename') or a.get('url')}】\n{text[:max_chars_each]}"
+            parts.append(piece)
+            used += len(piece)
+            if used >= max_total:
+                break
+        return "\n\n".join(parts)
+
+    def search_attachments(self, query: str, *, top_k: int = 6,
+                           article_ids: Sequence[int] | None = None) -> list[dict]:
+        """检索附件正文。返回带所属文章链接的结果（检索层据此把它并进证据）。"""
+        tokens = tokenize_query(query)
+        if not tokens:
+            return []
+        expr = fts_query(tokens, "OR")
+        if not expr:
+            return []
+        sql = """
+            SELECT t.rowid AS aid, a.id AS article_id, a.title, a.url AS article_url,
+                   a.pub_date, a.college, a.topic, g.filename, g.stored, g.kind, g.text,
+                   bm25(attachment_fts, 2.0, 1.0) AS rank
+            FROM attachment_fts t
+            JOIN attachment g ON g.id = t.rowid
+            LEFT JOIN article a ON a.id = g.article_id
+            WHERE attachment_fts MATCH ?
+            ORDER BY rank LIMIT ?
+        """
+        params: list = [expr, max(top_k * 8, 40)]
+        with self._lock:
+            try:
+                rows = self.conn.execute(sql, params).fetchall()
+            except sqlite3.OperationalError:
+                return []
+        long_tokens = [t for t in tokens if len(t) >= 2]
+        out: list[dict] = []
+        for r in rows:
+            text = r["text"] or ""
+            covered = sum(1 for t in long_tokens if t in text)
+            score = (-float(r["rank"] or 0.0)) + covered * 4.0
+            out.append({
+                "attachment_id": int(r["aid"]),
+                "article_id": int(r["article_id"] or 0),
+                "title": r["title"] or "",
+                "article_url": r["article_url"] or "",
+                "pub_date": r["pub_date"] or "",
+                "college": r["college"] or "",
+                "topic": r["topic"] or "",
+                "filename": r["filename"] or "",
+                "stored": r["stored"] or "",
+                "kind": r["kind"] or "",
+                "snippet": self._snippet(text, tokens),
+                "score": score,
+            })
+        out.sort(key=lambda x: -x["score"])
+        return out[:top_k]
+
+    def articles_with_attachments(self, *, limit: int = 50) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT id, url, title, pub_date, attachments FROM article
+                   WHERE attachments IS NOT NULL AND attachments<>'' AND attachments<>'[]'
+                   ORDER BY id DESC LIMIT ?""", (int(limit),)).fetchall()
+        return [dict(r) for r in rows]
+
+    def articles_with_unparsed_attachments(self, *, limit: int = 50) -> list[dict]:
+        """有附件链接、但 attachment 表里还没有对应记录的文章。"""
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT a.id, a.url, a.title, a.pub_date, a.attachments FROM article a
+                   WHERE a.attachments IS NOT NULL AND a.attachments<>'' AND a.attachments<>'[]'
+                     AND NOT EXISTS (SELECT 1 FROM attachment g
+                                     WHERE g.article_id = a.id
+                                       AND g.text IS NOT NULL AND g.text<>'')
+                   ORDER BY COALESCE(NULLIF(a.pub_date,''),'0000-00-00') DESC, a.id DESC
+                   LIMIT ?""", (int(limit),)).fetchall()
+        return [dict(r) for r in rows]
+
+    def attachment_stats(self) -> dict:
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT kind, COUNT(*) n, COALESCE(SUM(bytes),0) b,
+                          SUM(CASE WHEN text IS NOT NULL AND text<>'' THEN 1 ELSE 0 END) with_text,
+                          COALESCE(SUM(ocr_used),0) ocr
+                   FROM attachment GROUP BY kind ORDER BY n DESC""").fetchall()
+            total = self.conn.execute("SELECT COUNT(*) c FROM attachment").fetchone()["c"]
+        return {"total": total, "by_kind": [dict(r) for r in rows]}
 
     def close(self) -> None:
         with self._lock:
             self.conn.close()
+
+
+def _chunks(seq: Sequence, size: int):
+    for i in range(0, len(seq), size):
+        yield list(seq[i:i + size])
