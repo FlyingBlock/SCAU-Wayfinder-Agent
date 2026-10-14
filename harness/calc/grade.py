@@ -2,7 +2,14 @@
 
 口径说明（写在界面上给学生看）：
 
+    一门课程的学分绩点 = 该课程的学分数 × 绩点数
     平均学分绩点 = Σ(每门课绩点 × 该课学分) / Σ(学分)
+
+其中百分制绩点按《华南农业大学本科学生学籍管理实施细则》（华南农办〔2021〕68号）
+第十二条（一）折算：60 ≤ 分数 ≤ 100 时 **绩点 = 分数 ÷ 10 − 5**，
+低于 60 分为 0 绩点（100 分 = 5.00、90 分 = 4.00、80 分 = 3.00、60 分 = 1.00）。
+五级制：优秀 4.50 / 良好 3.50 / 中等 2.50 / 及格 1.50 / 不及格 0。
+具体数值仍以 `calcdata/rules.json` 的 `gpa` 为准，这里只说明口径。
 
 计入范围由培养方案里每门课的 `counts_toward_gpa` 决定，默认所有课都计。
 """
@@ -62,6 +69,13 @@ class GPAResult:
     ranking_gpa: float = 0.0         # 只算计入排名的课程
     ranking_credits: float = 0.0
     gpa_from_retakes: int = 0        # 有多少门是补考/重修记录
+    # 综测评优口径的平均学分绩点：剔除重修课程（华农党发〔2020〕38号
+    # 第六条（一）「重修课程成绩不纳入平均绩点计算范围」）。
+    # 它和 `gpa` 是两套口径，见 GradeTable.comprehensive_excludes_retakes。
+    gpa_no_retake: float = 0.0
+    credits_no_retake: float = 0.0
+    # 智育基础分实际采用的那个绩点（按规则决定是否剔除重修）
+    comprehensive_gpa: float = 0.0
 
     @property
     def progress(self) -> float:
@@ -78,6 +92,9 @@ class GPAResult:
             "credits_earned": round(self.credits_earned, 2),
             "credits_remaining": round(self.credits_remaining, 2),
             "ranking_gpa": round(self.ranking_gpa, 4),
+            "gpa_no_retake": round(self.gpa_no_retake, 4),
+            "credits_no_retake": round(self.credits_no_retake, 2),
+            "comprehensive_gpa": round(self.comprehensive_gpa, 4),
             "failed_count": len(self.failed),
             "progress": round(self.progress, 4),
             "courses": [c.as_dict() for c in self.courses],
@@ -116,6 +133,8 @@ def compute_gpa(courses: list[Course], profile: Profile,
 
     gp_x_credit = 0.0
     graded_credits = 0.0
+    no_retake_gp_x_credit = 0.0      # 剔除重修后的 绩点×学分
+    no_retake_credits = 0.0
     score_x_credit = 0.0
     score_credits = 0.0
     rk_gp_x_credit = 0.0
@@ -140,9 +159,12 @@ def compute_gpa(courses: list[Course], profile: Profile,
             continue
 
         # 补考 / 重修口径：学生标了 `retakes` 的课，按封顶绩点计入。
-        # capped   —— 及格即封顶（多数学校按 60 分 / 1.0 绩点记）
+        # capped   —— 官方口径（默认）：及格及以上一律折合 1.00 绩点
+        #            （学籍细则第十二条（三）：补考和重修成绩按实际分数记载
+        #             并标注，成绩及格及以上的绩点均折合为 1.00）
         # actual   —— 按实得分算，不封顶
-        # first    —— 不把重修成绩计入绩点（保留首修记录，这里视为不计）
+        # first    —— 整门课不计入绩点（综测评优口径才这么做，见下方
+        #            no_retake 的算法；学校层面它只用于智育基础分）
         # 注意：这段必须在「出成绩」分支之后、且不能早退，
         # 否则重修课会被当成普通首修课按实得分计绩点（封顶失效）。
         is_retake = course.code in set(profile.retakes or ())
@@ -170,6 +192,12 @@ def compute_gpa(courses: list[Course], profile: Profile,
             row.counted = True
             graded_credits += course.credits
             gp_x_credit += effective_gp * course.credits
+            # 综测评优口径另算一份、剔除重修课程的加权绩点：
+            # 华农党发〔2020〕38号 第六条（一）「重修课程成绩不纳入平均绩点
+            # 计算范围」，所以重修课整门不进这个平均，而不是按 1.00 计。
+            if not is_retake:
+                no_retake_credits += course.credits
+                no_retake_gp_x_credit += gp * course.credits
             if score is not None:
                 score_x_credit += score * course.credits
                 score_credits += course.credits
@@ -189,6 +217,11 @@ def compute_gpa(courses: list[Course], profile: Profile,
 
     res.credits_graded = round(graded_credits, 2)
     res.gpa = gp_x_credit / graded_credits if graded_credits > 0 else 0.0
+    res.credits_no_retake = round(no_retake_credits, 2)
+    res.gpa_no_retake = (no_retake_gp_x_credit / no_retake_credits
+                         if no_retake_credits > 0 else 0.0)
+    res.comprehensive_gpa = (res.gpa_no_retake
+                             if table.comprehensive_excludes_retakes else res.gpa)
     res.avg_score = score_x_credit / score_credits if score_credits > 0 else 0.0
     res.ranking_credits = round(rk_credits, 2)
     res.ranking_gpa = rk_gp_x_credit / rk_credits if rk_credits > 0 else 0.0

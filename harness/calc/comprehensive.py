@@ -241,7 +241,16 @@ def _derive(d: Dimension, metrics: MetricsResult, table: GradeTable) -> float:
     if d.derive == "gpa_ratio":
         # 生命科学学院口径：智育基础分 = 本人学年度平均绩点 ÷ 本年级本专业
         # 最高平均绩点 × 55。学生手填专业最高绩点则用真实值，否则用估计值。
-        own = float(metrics.get("gpa") or 0.0)
+        #
+        # 这里的「本人绩点」必须用综测评优口径：华农党发〔2020〕38号
+        # 第六条（一）「重修课程成绩不纳入平均绩点计算范围」，学院通知也明确
+        # 智育基础分用「教务系统导出的不含重修课程及第二学位成绩的平均绩点」。
+        # 所以优先取 gpa_no_retake，而不用含重修（及格者折算 1.00）的 gpa。
+        # 注意用 `is None` 判断而不是真值判断：全部课程都是重修时
+        # gpa_no_retake 正好是 0.0，那时不能悄悄退回含重修的 gpa
+        # （否则等于把规则改回去了），只能走下面的加权平均分兜底。
+        own_raw = metrics.get("gpa_no_retake")
+        own = float((metrics.get("gpa") or 0.0) if own_raw is None else own_raw)
         top = float(metrics.get("major_top_gpa") or 0.0)
         if own and top:
             return min(d.cap, own / top * d.base)

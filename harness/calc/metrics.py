@@ -53,12 +53,18 @@ METRIC_DEFS: list[MetricDef] = [
     MetricDef("avg_score", "加权平均分", "分", "number", "derived", "由已填成绩自动算出"),
     MetricDef("ranking_gpa", "保研用学业成绩绩点", "", "number", "derived",
               "只计培养方案里标记为计入排名的课程"),
+    MetricDef("gpa_no_retake", "综测智育用平均绩点（不含重修）", "", "number", "derived",
+              "综合测评/评优口径：《华南农业大学本科生综合测评及评优实施办法》"
+              "华农党发〔2020〕38号 第六条（一）「重修课程成绩不纳入平均绩点计算范围」，"
+              "重修课整门不计入。与上面按学籍细则第十二条（三）折算 1.00 的绩点是"
+              "两套口径，学生有重修记录时两者不相等。"),
     MetricDef("major_top_gpa", "同班型最高平均绩点", "", "number", "form",
               "生命科学学院推免口径：学业成绩得分 = 个人绩点 ÷ 同班型最高绩点 × 85。"
-              "综测智育基础分用同一个数：本人绩点 ÷ 同班型最高绩点 × 55。"
+              "综测智育基础分用同一个数：本人绩点 ÷ 同班型最高绩点 × 55"
+              "（这里的本人绩点用「不含重修」的那个）。"
               "不填则退回按加权平均分折算并提示"),
     MetricDef("gpa_ratio", "绩点 / 专业最高绩点", "%", "number", "derived",
-              "智育基础分的直接依据"),
+              "智育基础分的直接依据，用「不含重修」的绩点计算"),
     MetricDef("credits_earned", "已获学分", "", "number", "derived", "已通过课程学分合计"),
     MetricDef("credits_total", "培养方案总学分", "", "number", "derived", ""),
     MetricDef("credits_remaining", "未出成绩学分", "", "number", "derived",
@@ -131,36 +137,46 @@ def compute_metrics(profile: Profile, gpa: GPAResult,
 
     # ---- 自动推算 ---------------------------------------------------------- #
     vals["gpa"] = round(gpa.gpa, 4)
-    res.sources["gpa"] = "由成绩单加权算出"
+    res.sources["gpa"] = "由成绩单加权算出（含重修，及格者按学籍细则折算 1.00）"
+    vals["gpa_no_retake"] = round(gpa.gpa_no_retake, 4)
+    res.sources["gpa_no_retake"] = (
+        "剔除了重修课程的加权绩点（华农党发〔2020〕38号 第六条（一）："
+        "重修课程成绩不纳入平均绩点计算范围），综测智育基础分用它")
     vals["avg_score"] = round(gpa.avg_score, 2)
     res.sources["avg_score"] = "由成绩单加权算出"
     vals["ranking_gpa"] = round(gpa.ranking_gpa, 4)
     res.sources["ranking_gpa"] = "只计培养方案中标记为计入排名的课程"
+    # 两个口径分开用：推免学业成绩看教务系统的全学程平均学分绩点（含重修，
+    # 及格者 1.00）；综测智育基础分看剔除重修的那个绩点。
+    own_tuimian = gpa.gpa
+    own_comprehensive = gpa.comprehensive_gpa
     top = (profile.metrics or {}).get("major_top_gpa")
     if top:
         try:
             top_f = float(top)
         except (TypeError, ValueError):
             top_f = 0.0
-        if top_f > 0 and gpa.gpa > 0:
-            vals["gpa_ratio"] = round(gpa.gpa / top_f, 4)
+        if top_f > 0 and own_comprehensive > 0:
+            vals["gpa_ratio"] = round(own_comprehensive / top_f, 4)
             res.sources["gpa_ratio"] = (
-                f"我的绩点 {gpa.gpa:.3f} ÷ 同班型最高绩点 {top_f:g}")
+                f"我的绩点 {own_comprehensive:.3f}（不含重修）÷ "
+                f"同班型最高绩点 {top_f:g}")
+        if top_f > 0 and own_tuimian > 0:
             # 推免学业成绩得分：学院细则原文
             # 「得分=个人绩点/同班型最高绩点*85」，上限 85
-            vals["academic"] = round(min(85.0, gpa.gpa / top_f * 85.0), 3)
+            vals["academic"] = round(min(85.0, own_tuimian / top_f * 85.0), 3)
             res.sources["academic"] = (
-                f"{gpa.gpa:.3f} ÷ {top_f:g} × 85 = {vals['academic']:.2f}"
+                f"{own_tuimian:.3f} ÷ {top_f:g} × 85 = {vals['academic']:.2f}"
                 "（生命科学学院推免综合评价细则 2026 修订）")
-    elif gpa.gpa > 0:
+    elif own_tuimian > 0:
         # 没有真实最高绩点时，按「5 分制上限」给一个下界估计，
         # 折算出来的分项分会偏低，界面上会标明这一点。
-        vals["gpa_ratio"] = round(gpa.gpa / 5.0, 4)
+        vals["gpa_ratio"] = round(own_comprehensive / 5.0, 4)
         res.sources["gpa_ratio"] = (
             "按绩点上限 5.0 估算（未填同班型最高绩点），实际比值会更高")
-        vals["academic"] = round(min(85.0, gpa.gpa / 5.0 * 85.0), 3)
+        vals["academic"] = round(min(85.0, own_tuimian / 5.0 * 85.0), 3)
         res.sources["academic"] = (
-            f"{gpa.gpa:.3f} ÷ 5.0 × 85 = {vals['academic']:.2f}"
+            f"{own_tuimian:.3f} ÷ 5.0 × 85 = {vals['academic']:.2f}"
             "（下界估计：未填同班型最高绩点，实际会更高）")
     vals["credits_earned"] = round(gpa.credits_earned, 2)
     res.sources["credits_earned"] = "已通过课程学分合计"

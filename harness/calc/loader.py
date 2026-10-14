@@ -130,6 +130,8 @@ def _load_grade_table(raw: dict) -> GradeTable:
         retake_policy=str(raw.get("retake_policy", "capped")),
         retake_cap=_num(raw.get("retake_cap"), 1.0),
         include_retake_in_gpa=bool(raw.get("include_retake_in_gpa", True)),
+        comprehensive_excludes_retakes=bool(
+            raw.get("comprehensive_excludes_retakes", True)),
         note=str(raw.get("note", "")),
     )
 
@@ -319,10 +321,49 @@ def load_calc_data(directory: str | Path | None = None,
     return data
 
 
+def _check_official_gpa_bands(data: CalcData) -> None:
+    """逐分核对绩点折算表是否与学校公示口径一致。
+
+    依据：《华南农业大学本科学生学籍管理实施细则》华南农办〔2021〕68号
+    第十二条（一）（同文条款见《华南农业大学本科学生学分制实施细则》
+    华南农办〔2010〕88号 第八条（一））——
+
+        百分制记分，100分折算为5.00绩点，99分折算为4.90绩点，98分折算为
+        4.80绩点……，依此类推，低于60分折算为0绩点。
+
+    即 60 ≤ X ≤ 100 时 绩点 = X ÷ 10 − 5，X < 60 时 0 绩点。
+
+    这不是「猜一个公式」：从 100 分起每降 1 分减 0.10，降到 60 分正好是 1.00，
+    与同条「补考和重修……成绩及格及以上的，其绩点均折合为1.00」严丝合缝；
+    五级制的 优秀4.50／良好3.50／中等2.50／及格1.50 在这条标尺上也正好是
+    95／85／75／65 分。折算表是这个计算器的地基，一旦有人手改 `gpa.bands`
+    跟官方口径脱钩，成绩单算出来的绩点、保研门槛判定、课程目标分反推会
+    一起错，所以在这里逐分核对并把差异报成警告。
+    """
+    gpa = data.rules.gpa
+    for score in range(60, 101):
+        expected = score / 10 - 5
+        actual = gpa.score_to_gp(score)
+        if abs(actual - expected) > 1e-6:
+            data.warnings.append(
+                f"绩点折算与学校公示口径不一致：{score} 分算成 {actual:.2f} 绩点，"
+                f"按《华南农业大学本科学生学籍管理实施细则》华南农办〔2021〕68号"
+                f"第十二条（一）应为 {expected:.2f}。请检查 rules.json 的 gpa.bands。")
+            break
+    if abs(gpa.score_to_gp(gpa.fail_score - 1) - 0.0) > 1e-9:
+        data.warnings.append(
+            f"绩点折算与学校公示口径不一致：{gpa.fail_score - 1:g} 分未折算为 0 绩点"
+            "（华南农办〔2021〕68号 第十二条（一）原文「低于60分折算为0绩点」）。"
+            "请检查 rules.json 的 gpa.bands。")
+
+
 def _validate(data: CalcData) -> None:
     """一致性检查：把数据文件的低级错误在启动时就暴露出来。"""
-    if not data.rules.gpa.bands:
+    gpa = data.rules.gpa
+    if not gpa.bands:
         data.warnings.append("rules.json 没有配绩点折算区间（gpa.bands 为空），绩点会全部算成 0")
+    else:
+        _check_official_gpa_bands(data)
     # 这些类别是「提示信息」而非加分项，允许不挂任何通道
     info_only = {"风险提示", "信息"}
     seen: set[str] = set()

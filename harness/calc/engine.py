@@ -105,6 +105,8 @@ class Calculator:
                 "fail_score": self.rules.gpa.fail_score,
                 "retake_policy": self.rules.gpa.retake_policy,
                 "retake_cap": self.rules.gpa.retake_cap,
+                "comprehensive_excludes_retakes":
+                    self.rules.gpa.comprehensive_excludes_retakes,
                 "note": self.rules.gpa.note,
             },
             "comprehensive": self.rules.comprehensive,
