@@ -22,6 +22,18 @@ from .websearch import WebResult, WebSearcher
 
 TraceFn = Callable[[str, dict], None]
 
+#: 流式增量回调：`on_delta(正文片段, is_final)`。
+#: is_final=True 的那一次调用片段为空，表示「正文到此为止」——
+#: 前端据此把光标收掉、把「引用来源」侧栏补全。
+DeltaFn = Callable[[str, bool], None]
+
+#: 生成答案时的 token 预算：默认取 LLM_MAX_TOKENS，但不低于 GENERATE_MIN_TOKENS；
+#: 万一还是被思维链吃光（正文为空 / finish_reason=length），最多加到
+#: GENERATE_MAX_TOKENS 再问一次。上限刻意留有富余 —— 思维链模型一段答案
+#: 实测要 6000-10000 token（思考占大头），4096 那种预算必然只拿到空正文。
+GENERATE_MIN_TOKENS = 4096
+GENERATE_MAX_TOKENS = 32768
+
 
 @dataclass
 class Evidence:
@@ -62,6 +74,9 @@ class Answer:
     trace: list[tuple[str, dict]] = field(default_factory=list)
     error: str = ""
     prompt: str = ""          # dry_run 时填充：真正会送进模型的上下文
+    # 引用来源（结构化，给右侧「引用来源」侧栏用）。正文里只留 [n] 标号，
+    # 链接一律收进侧栏 —— 见 Agent.citation_payload。
+    citations: list[dict] = field(default_factory=list)
     # 对话卡片（活动/赛事、附件、关键时间）。由 harness.cards 从证据里确定性抽取，
     # 不经模型生成——见 cards.py 的模块说明。
     cards: dict = field(default_factory=dict)
@@ -154,16 +169,22 @@ class Agent:
 
     # ------------------------------------------------------------------ #
     def answer(self, question: str, *, max_rounds: int | None = None,
-               trace: TraceFn | None = None, dry_run: bool = False) -> Answer:
-        return self.answer_iter(question, max_rounds=max_rounds, trace=trace, dry_run=dry_run)
+               trace: TraceFn | None = None, dry_run: bool = False,
+               on_delta: DeltaFn | None = None) -> Answer:
+        return self.answer_iter(question, max_rounds=max_rounds, trace=trace,
+                                dry_run=dry_run, on_delta=on_delta)
 
     def answer_iter(self, question: str, *, max_rounds: int | None = None,
-                    trace: TraceFn | None = None, dry_run: bool = False) -> Answer:
+                    trace: TraceFn | None = None, dry_run: bool = False,
+                    on_delta: DeltaFn | None = None) -> Answer:
         """同步执行完整流程（带上限保护）。trace 回调用于前端展示中间步骤。
 
         dry_run=True 时：跳过所有 LLM 调用（分解用确定性兜底、缺口检测跳过），
         只跑到证据聚合为止，并把最终 prompt 放进 Answer.prompt。
         用于「不花 token 验证抓取与检索是否靠谱」。
+
+        on_delta 给定时，最终回答改为**流式生成**：正文增量边走边回调，
+        用户不用等整段答案生成完才看到第一个字。
         """
         rounds = 0 if dry_run else (self.s.agent_max_rounds if max_rounds is None else max_rounds)
         tr = trace or (lambda step, data: None)
@@ -215,17 +236,22 @@ class Agent:
             prompt = self.build_prompt(question, evidence)
             return Answer(question=question, text="", evidence=evidence,
                           subqueries=subqueries, rounds=0, prompt=prompt,
-                          cards=cards)
+                          cards=cards, citations=self.citation_payload(evidence))
 
         # ⑥⑦ 生成
+        cites = self.citation_payload(evidence)
         try:
-            text = self._generate(question, evidence)
+            if on_delta is not None:
+                text = self._generate_stream(question, evidence, on_delta)
+            else:
+                text = self._generate(question, evidence)
         except LLMError as e:
             return Answer(question=question, text="", evidence=evidence,
                           subqueries=subqueries, rounds=rounds, error=str(e),
-                          cards=cards)
+                          cards=cards, citations=cites)
         return Answer(question=question, text=text, evidence=evidence,
-                      subqueries=subqueries, rounds=rounds, cards=cards)
+                      subqueries=subqueries, rounds=rounds, cards=cards,
+                      citations=cites)
 
     def _build_cards(self, evidence: list[Evidence]) -> dict:
         """把证据整理成对话卡片（活动/赛事、附件、关键时间）。
@@ -515,25 +541,141 @@ class Agent:
         return f"[{e.n}] {e.title}\nURL: {e.url}\n摘要：{e.snippet}\n"
 
     def _generate(self, question: str, evidence: list[Evidence]) -> str:
+        prompt = self._answer_prompt(question, evidence)
+        budget = max(int(self.s.llm.max_tokens or 0), GENERATE_MIN_TOKENS)
+        text = self.llm.complete(prompt, system=prompts.SYSTEM,
+                                 temperature=0.3, max_tokens=budget)
+        if text.strip() and self.llm.last_finish_reason != "length":
+            return text
+
+        # 空正文 / 被截断：思维链模型最容易撞这个坑 —— 它把预算先花在
+        # reasoning_content 上，轮到 content 时预算已经用完（finish_reason=length）。
+        # 这里翻倍预算再问一次；接口不接受这么大的 max_tokens（400）就作罢。
+        bigger = min(budget * 2, GENERATE_MAX_TOKENS)
+        if bigger > budget:
+            try:
+                retry = self.llm.complete(prompt, system=prompts.SYSTEM,
+                                          temperature=0.3, max_tokens=bigger)
+            except LLMError:
+                retry = ""
+            if retry.strip():
+                return retry
+
+        if text.strip():
+            return text                      # 截断但有正文，总比什么都没有强
+        raise LLMError(
+            f"模型「{self.s.llm.model}」没有返回正文（{budget} token 的预算可能被思维链用尽）。"
+            f"可在 .env 里调大 LLM_MAX_TOKENS（如 16384），或改用非思维链模型（如 deepseek-chat）。")
+
+    def _generate_stream(self, question: str, evidence: list[Evidence],
+                         on_delta: DeltaFn | None = None) -> str:
+        """边生成边把正文增量交给调用方（前端流式显示的入口）。
+
+        容错与 `_generate` 一致（预算被思维链吃光就换更大的 budget 重来、
+        端点不支持 stream 就退回非流式整段生成），区别是「失败之后还能不能重来」
+        要看**有没有已经往外发过正文**：
+
+        · 还没发过 → 安静重来，用户看到的是「想了一会儿，然后开始往外蹦字」；
+        · 已经发了一半 → 不能重来（用户会看到两份正文），如实抛错。
+
+        还有一个「发不发得早」的问题：思维链模型的 reasoning_content 混在同一
+        条流里，而它随时可能因为预算耗尽把整段正文作废。所以：
+
+        · 流里出现过 reasoning_content（deepseek-flash / reasoner 这类）
+          → 整段攒着，确认完整之后再按片段补发（仍是逐段下发，只是晚一点）；
+        · 没出现过（普通对话模型）→ 来一段发一段，首字最快。
+        """
+        emit: DeltaFn = on_delta or (lambda piece, final=False: None)
+        prompt = self._answer_prompt(question, evidence)
+        budget = max(int(self.s.llm.max_tokens or 0), GENERATE_MIN_TOKENS)
+        msgs = [{"role": "system", "content": prompts.SYSTEM},
+                {"role": "user", "content": prompt}]
+        sent = False                          # 已经往客户端发过正文了吗
+
+        def send(piece: str, final: bool = False) -> None:
+            nonlocal sent
+            if piece:
+                sent = True
+            emit(piece, final)
+
+        def read(limit: int) -> tuple[list[str], bool]:
+            """收一轮流，返回 (正文片段, 是否完整结束)。中途不补发攒下的片段。"""
+            held, live = [], False
+            for piece in self.llm.stream_chat(msgs, temperature=0.3, max_tokens=limit):
+                held.append(piece)
+                if self.llm.last_reasoning and not live:
+                    continue                  # 思维链模型：先攒着
+                live = True
+                send(piece)
+            return held, self.llm.last_finish_reason != "length"
+
+        def done(pieces: list[str]) -> str:
+            """补发攒下的片段（如果还没发过）、收尾，返回完整正文。"""
+            if not sent:
+                for piece in pieces:
+                    send(piece)
+            emit("", True)
+            return "".join(pieces)
+
+        # ---- 第一轮：流式 ----
+        try:
+            held, complete = read(budget)
+        except LLMError:
+            if sent:
+                raise                         # 发过一半就别重来
+            held, complete = [], False
+        if complete and "".join(held).strip():
+            return done(held)
+
+        if not sent:
+            # ---- 第二轮：预算被思维链吃光，加预算再流一次 ----
+            # 之所以还是流式而不是直接退回 `_generate`：默认预算（LLM_MAX_TOKENS，
+            # 常见 8192）在思维链模型上经常不够，退回非流式就等于这段回答永远是
+            # 「等一分钟，然后一次性蹦出来」，正好是这次要治的问题。
+            bigger = min(budget * 2, GENERATE_MAX_TOKENS)
+            if bigger > budget:
+                try:
+                    held2, complete2 = read(bigger)
+                except LLMError:
+                    held2, complete2 = [], False
+                if "".join(held2).strip() and (complete2 or not "".join(held).strip()):
+                    return done(held2)
+
+            # ---- 第三轮：端点根本不支持 stream，退回非流式整段生成 ----
+            try:
+                text = self._generate(question, evidence)
+            except LLMError:
+                if "".join(held).strip():
+                    return done(held)          # 截断但有正文，总比什么都没有强
+                raise
+            send(text, True)
+            return text
+
+        text = "".join(held)
+        if text.strip():
+            return done(held)                  # 已经发出去且被截断：只能将就
+        raise LLMError(
+            f"模型「{self.s.llm.model}」没有返回正文（{budget} token 的预算可能被思维链用尽）。"
+            f"可在 .env 里调大 LLM_MAX_TOKENS（如 16384），或改用非思维链模型（如 deepseek-chat）。")
+
+    def _answer_prompt(self, question: str, evidence: list[Evidence]) -> str:
+        """把证据拼成最终回答的 prompt（_generate / _generate_stream / dry-run 共用）。
+
+        单独抽出来是为了让流式与非流式**走同一份上下文**：两条路各拼一次的话，
+        很容易出现「流式少了附件摘录」这类看不见的差异。
+        """
         site = "\n".join(self._fmt_site(e) for e in evidence if e.source == "site")
         web = "\n".join(self._fmt_web(e) for e in evidence if e.source == "web")
-        prompt = prompts.ANSWER.format(
+        return prompts.ANSWER.format(
             question=question,
             site_evidence=site or "（无）",
             web_evidence=web or "（无）",
             today=datetime.date.today().isoformat(),
         )
-        return self.llm.complete(prompt, system=prompts.SYSTEM,
-                                 temperature=0.3, max_tokens=4096)
 
     def build_prompt(self, question: str, evidence: list[Evidence]) -> str:
         """暴露给 --dry-run：不调用 LLM，只看真正会送进模型的上下文。"""
-        site = "\n".join(self._fmt_site(e) for e in evidence if e.source == "site")
-        web = "\n".join(self._fmt_web(e) for e in evidence if e.source == "web")
-        return prompts.ANSWER.format(
-            question=question, site_evidence=site or "（无）",
-            web_evidence=web or "（无）", today=datetime.date.today().isoformat(),
-        )
+        return self._answer_prompt(question, evidence)
 
     @staticmethod
     def fallback_subqueries(question: str) -> list[dict]:
@@ -575,7 +717,37 @@ class Agent:
         return qs[:8]
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def citation_payload(evidence: list[Evidence]) -> list[dict]:
+        """引用来源的结构化数据 —— 给右侧「引用来源」侧栏渲染。
+
+        为什么不再让前端解析 `build_citations()` 的文本：URL 里带 `|`、括号、
+        空格是常事，切字符串必然出错；结构化字段让侧栏能分开画
+        「编号 / 标题 / 网址 / 日期 / 来源」，也让正文里只留 [n] 成为可能。
+        """
+        out: list[dict] = []
+        for e in evidence:
+            out.append({
+                "n": e.n,
+                "title": e.title,
+                "url": e.url,
+                "pub_date": e.pub_date,
+                "source": e.source,
+                "tag": "公网" if e.source == "web" else (e.college or e.site_name or "校内"),
+                "stale": bool(e.stale),
+            })
+        return out
+
+    @staticmethod
+    def evidence_payload(evidence: list[Evidence]) -> list[dict]:
+        """正文下方「检索命中」列表用的轻量证据（不含正文，避免页面过大）。"""
+        return [{"n": e.n, "title": e.title, "url": e.url, "pub_date": e.pub_date,
+                 "source": e.source,
+                 "tag": "公网" if e.source == "web" else (e.college or e.site_name or "校内")}
+                for e in evidence]
+
     def build_citations(self, answer: Answer) -> str:
+        """纯文本引用列表（CLI 打印用；网页端用 citation_payload）。"""
         lines = []
         for e in answer.evidence:
             tag = "公网" if e.source == "web" else (e.college or e.site_name or "校内")

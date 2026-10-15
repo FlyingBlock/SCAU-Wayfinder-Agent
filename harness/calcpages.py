@@ -1342,7 +1342,6 @@ CALC_DOCS_PAGE = r"""<!DOCTYPE html>
 # 保留整页文本（CALC_PAGE / CALC_DOCS_PAGE）是为了「改标记只改一份」：
 # 下面几个函数都按标记切片，不再抄第二遍 HTML。
 # --------------------------------------------------------------------------- #
-import re
 
 
 def _slice(text: str, start: str, end: str) -> str:
@@ -1352,24 +1351,63 @@ def _slice(text: str, start: str, end: str) -> str:
     return text[i:j]
 
 
+def _css_rules(css: str) -> list[tuple[str, str]]:
+    """按**顶层**花括号把 CSS 切成 (前缀, 块内容)。
+
+    为什么不能按「遇到 `}` 就切」：`@media (max-width:1100px){.wrap{…}}` 这类
+    at-rule 自带嵌套花括号，会被拦腰截断成
+    `#view-calc @media (max-width:1100px){.wrap{…}` 这种非法选择器，
+    连带把后面几条规则一起吃掉。这里改用花括号配平来切，
+    `@media` 的块内容就是里面那一整段（交给调用方决定怎么处理）。
+    """
+    rules: list[tuple[str, str]] = []
+    i, n = 0, len(css)
+    while i < n:
+        j = css.find("{", i)
+        if j < 0:
+            break
+        depth, k = 1, j + 1
+        while k < n and depth:
+            if css[k] == "{":
+                depth += 1
+            elif css[k] == "}":
+                depth -= 1
+            k += 1
+        if depth:                    # 花括号没配平，剩下的丢掉
+            break
+        rules.append((css[i:j].strip(), css[j + 1:k - 1]))
+        i = k
+    return rules
+
+
+# at-rule 里选择器不是 HTML 元素，加前缀会毁掉它们：
+#   @keyframes 里是 0%/to，@font-face 里是描述符，@import/@charset 压根没有块。
+_UNSCOPABLE_AT = ("@keyframes", "@font-face", "@import", "@charset", "@namespace")
+
+
 def _scope_css(css: str, scope: str) -> str:
     """把一段 CSS 的每条规则限定在 `scope` 里（body/main 这类页面级规则丢掉）。
 
-    口径说明那段是**内容**样式，不限定作用域的话 `h2`/`table` 会把整个页面改掉。
+    口径说明与计算器那两段都是**内容**样式，不限定作用域的话
+    `h2`/`table`/`button`/`input` 会把整个单页应用（含对话页与设置弹窗）改掉。
+    `@media` / `@supports` 递归处理里面；`@keyframes` 原样保留。
     """
     out: list[str] = []
-    for block in re.split(r"(?<=\})\s*", css):
-        if "{" not in block:
+    for sel, body in _css_rules(css):
+        if not sel:
             continue
-        sel, _, rest = block.partition("{")
-        sel = sel.strip()
-        if not sel or sel in ("body", "main", "html"):
+        if sel.startswith("@"):
+            if sel.lower().startswith(_UNSCOPABLE_AT):
+                out.append(sel + "{" + body + "}")
+            else:
+                out.append(sel + "{\n" + _scope_css(body, scope) + "\n}")
             continue
-        scoped = ", ".join(
-            (f"{scope} {one.strip()}" if one.strip() not in ("html", "body") else scope)
-            for one in sel.split(",") if one.strip()
-        )
-        out.append(scoped + "{" + rest.rstrip())
+        # 分页选择器里混着页面级选择器时只丢掉那一个，其余照常加前缀
+        keep = [one.strip() for one in sel.split(",")
+                if one.strip() and one.strip() not in ("html", "body", "main", ":root")]
+        if not keep:
+            continue
+        out.append(", ".join(f"{scope} {one}" for one in keep) + "{" + body.strip() + "}")
     return "\n".join(out)
 
 
@@ -1379,7 +1417,8 @@ CALC_VIEW_HTML = _slice(CALC_PAGE, '<section class="view" id="view-calc">',
 CALC_VIEW_HTML = '<section class="view" id="view-calc">' + CALC_VIEW_HTML + "</section>"
 CALC_VIEW_JS = _slice(CALC_PAGE, "<script>", "/* 启动交给外壳")
 
-# 计算器样式：CALC_PAGE 的 <style> 段（只保留计算器自己的规则，页面级规则已在原文里删掉）
+# 计算器样式：CALC_PAGE 的 <style> 段。注入时用 _scope_css 限定到 #view-calc，
+# 里面的 `h2`/`table`/`button`/`input` 这些全局选择器才不会被带进对话页与设置弹窗。
 CALC_VIEW_CSS = _slice(CALC_PAGE, "<style>", "</style>")
 
 # 口径说明视图：原 /calc-docs 的正文，样式限定在 #view-docs 里避免影响其它视图。
@@ -1389,8 +1428,21 @@ CALC_DOCS_STYLE = _scope_css(_slice(CALC_DOCS_PAGE, "<style>", "</style>"), "#vi
 
 
 def calc_view_html() -> str:
-    """计算器视图（四个子页 + 右侧实时结果），塞进外壳的 #appmain 里。"""
-    return "\n  " + CALC_VIEW_HTML + "\n"
+    """计算器视图（四个子页 + 右侧实时结果），塞进外壳的 #appmain 里。
+
+    样式跟着视图走（和 `docs_view_html()` 一个做法）：原整页的 <style> 里
+    `h2` / `table` / `th,td` / `button` / `select,input` 这些选择器没有作用域，
+    直接塞进单页应用会把对话页和设置弹窗一起改样，所以先 `_scope_css` 到
+    `#view-calc` 再内联。
+    """
+    return (
+        "\n" + CALC_VIEW_HTML.replace(
+            '<section class="view" id="view-calc">',
+            '<section class="view" id="view-calc">\n    <style>\n'
+            + _scope_css(CALC_VIEW_CSS, "#view-calc") + '\n    </style>',
+            1,
+        ) + "\n"
+    )
 
 
 def calc_view_js() -> str:

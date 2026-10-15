@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Iterator
 
 from .config import LLMSettings
 
@@ -54,6 +55,13 @@ class Usage:
 class LLM:
     settings: LLMSettings
     usage: Usage = field(default_factory=Usage)
+    #: 最近一次调用的事实：有些模型（deepseek-flash / deepseek-reasoner 这类
+    #: **思维链模型**）先写一大段 reasoning_content，正文才轮到 content。
+    #: max_tokens 给小了就会出现「思考没写完、content 是空字符串」——
+    #: 接口不报错，只看返回值分不出「模型没话说」和「预算被思考吃光了」，
+    #: 所以把这两项留给调用方（见 agent._generate 的加预算重试）。
+    last_finish_reason: str = ""
+    last_reasoning: str = ""
 
     # ------------------------------------------------------------------ #
     @property
@@ -104,7 +112,10 @@ class LLM:
                 choices = data.get("choices") or []
                 if not choices:
                     raise LLMError(f"响应没有 choices：{str(data)[:300]}")
-                text = (choices[0].get("message") or {}).get("content") or ""
+                msg = choices[0].get("message") or {}
+                text = msg.get("content") or ""
+                self.last_finish_reason = str(choices[0].get("finish_reason") or "")
+                self.last_reasoning = msg.get("reasoning_content") or ""
                 u = data.get("usage") or {}
                 self.usage.add(int(u.get("prompt_tokens") or 0),
                                int(u.get("completion_tokens") or 0), secs)
@@ -127,6 +138,85 @@ class LLM:
         raise LLMError(f"LLM 调用失败（model={self.settings.model} url={url}）：{last_err}")
 
     # ------------------------------------------------------------------ #
+    # 流式输出（前端「边生成边显示」靠它）
+    #
+    # 与 chat() 的分工：
+    #   · 这里**不重试**。多轮流式一旦已经吐出过正文，重试就等于把同一段话
+    #     再说一遍，前端接到的是两份内容。异常直接抛出去，由调用方决定
+    #     「要不要换一条路（非流式）重来」——见 agent.Agent._generate_stream。
+    #   · 思维链模型的 reasoning_content（思考过程）混在同一个流里一起下发，
+    #     这里按「只要正文」的既定口径丢弃，只 yield content 增量，
+    #     免得把模型的内部草稿当成答案显示给用户。
+    # ------------------------------------------------------------------ #
+    def stream_chat(self, messages: list[dict], *, temperature: float | None = None,
+                    max_tokens: int | None = None) -> Iterator[str]:
+        """向端点发一次 `stream: true` 的请求，逐段 yield 正文增量。"""
+        if not self.configured:
+            raise LLMNotConfigured(
+                "未配置 LLM API key。请在 harness/.env 里写入：\n"
+                "  DEEPSEEK_API_KEY=sk-xxxx\n"
+                "或运行： python -m harness.cli setup-key"
+            )
+        url = self.settings.base_url.rstrip("/") + "/chat/completions"
+        payload = self._payload(messages, temperature=temperature,
+                                max_tokens=max_tokens, json_mode=False)
+        payload["stream"] = True
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode("utf-8"), method="POST",
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {self.settings.api_key}",
+                     "Accept": "text/event-stream"})
+
+        self.last_finish_reason = ""
+        self.last_reasoning = ""
+        t0 = time.time()
+        try:
+            try:
+                with urllib.request.urlopen(req, timeout=self.settings.timeout) as r:
+                    yield from self._read_sse(r)
+            except urllib.error.HTTPError as e:
+                # 端点不支持 stream（常见）或鉴权/参数错：一律包成 LLMError 抛出去，
+                # 让 agent 有机会退回非流式。漏出原始的 HTTPError 就没法兜了。
+                detail = e.read().decode("utf-8", "ignore")[:300]
+                raise LLMError(f"LLM 流式调用失败（model={self.settings.model} "
+                               f"url={url}）：HTTP {e.code}: {detail}") from e
+            except urllib.error.URLError as e:
+                raise LLMError(f"LLM 流式调用失败（model={self.settings.model} "
+                               f"url={url}）：网络错误: {e}") from e
+        finally:
+            self.usage.seconds += time.time() - t0
+
+    def _read_sse(self, resp) -> Iterator[str]:
+        """把一条 text/event-stream 响应解析成正文增量（丢掉思考过程）。"""
+        for raw in resp:
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line.startswith("data:"):
+                continue                      # 空行 / 注释 / event: 行
+            data = line[5:].strip()
+            if not data or data == "[DONE]":
+                continue
+            try:
+                obj = json.loads(data)
+            except json.JSONDecodeError:
+                continue                      # 心跳或半截行
+            choices = obj.get("choices") or []
+            if not choices:
+                continue
+            choice = choices[0]
+            if choice.get("finish_reason"):
+                self.last_finish_reason = str(choice["finish_reason"])
+            delta = choice.get("delta") or {}
+            if delta.get("reasoning_content"):
+                self.last_reasoning += str(delta["reasoning_content"])
+            piece = delta.get("content")
+            if piece:
+                yield str(piece)
+            u = obj.get("usage")                    # 有些端点只在最后一帧带
+            if u:
+                self.usage.add(int(u.get("prompt_tokens") or 0),
+                               int(u.get("completion_tokens") or 0), 0.0)
+
+    # ------------------------------------------------------------------ #
     def complete(self, prompt: str, *, system: str = "", temperature: float | None = None,
                  max_tokens: int | None = None) -> str:
         msgs = ([{"role": "system", "content": system}] if system else []) + \
@@ -147,9 +237,11 @@ class LLM:
         try:
             out = self.chat(
                 [{"role": "user", "content": "只回复两个字：可用"}],
-                max_tokens=16, temperature=0.0, retries=0,
+                max_tokens=256, temperature=0.0, retries=0,
             )
-            return True, (out or "").strip()[:40]
+            # 思维链模型常把这点预算全花在思考上、正文为空。能拿回思考内容就说明
+            # 端点与 key 都是通的，不该让设置面板显示「验证失败」。
+            return True, (out or self.last_reasoning or "").strip()[:40]
         except Exception as e:
             return False, str(e)[:300]
 

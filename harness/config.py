@@ -182,7 +182,11 @@ class LLMSettings:
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-chat"
     temperature: float = 0.0
-    max_tokens: int = 4096
+    # 单次生成的上限。思维链模型（deepseek-flash / deepseek-reasoner 等）会先用
+    # reasoning_content 思考、再写正文，预算给小了会只拿到空正文；4096 实测不够，
+    # 8192 仍可能被截断（agent._generate 会据此翻倍重试）。想固定更大就直接设
+    # LLM_MAX_TOKENS。
+    max_tokens: int = 8192
     timeout: int = 180
 
     @classmethod
@@ -196,7 +200,7 @@ class LLMSettings:
             base_url=base.rstrip("/"),
             model=model,
             temperature=float(getenv("LLM_TEMPERATURE", "0") or 0),
-            max_tokens=int(getenv("LLM_MAX_TOKENS", "4096") or 4096),
+            max_tokens=int(getenv("LLM_MAX_TOKENS", "8192") or 8192),
         )
 
     @property
