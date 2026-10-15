@@ -30,6 +30,8 @@ from .calcpages import calc_view_html, calc_view_js, docs_view_html
 #   输出在上方（.chat-scroll 滚动），输入框贴在视图底部中间（.composer），
 #   右边一栏「引用来源」（.sources）——正文里只留 [n] 标号，
 #   本次检索用到的全部链接都收在这一栏里。
+#   右栏贴在整个页面的最右边（宽屏下占的是正文两侧的留白，不压缩正文列；
+#   主区放不下「正文 + 右栏」时才浮在正文之上，见 appshell.SHELL_CSS）。
 # 状态徽标单独用一个 #pill-chat —— 计算器写自己的 #pill-calc，两边互不覆盖。
 # --------------------------------------------------------------------------- #
 CHAT_VIEW_MARKUP = r"""
@@ -339,14 +341,29 @@ function chatSourcesToggle(open){
   el.classList.toggle('closed', !SOURCES.open);
   try{ localStorage.setItem('scau-src', SOURCES.open ? '1' : '0'); }catch(e){}
 }
+/* 右栏能不能并排摆在正文右边（而不是浮在正文上）：
+   可用宽度 = 窗口宽 − 左侧栏（>820px 时它占一列：展开 248 / 收起 56；更窄时它本身是浮层），
+   够放「正文列 760 + 正文两侧内边距 40 + 右栏 248 = 1048px」才并排。
+   这就是 appshell.SHELL_CSS 里那两段 @media（1295 / 1104）的算法，改一边得改另一边。 */
+function sourcesInline(){
+  let w = 0;
+  try{
+    const vw = window.innerWidth || 0;
+    let sw = 0;
+    if(vw > 820) sw = $('#sidebar').getBoundingClientRect().width || 0;
+    w = vw - sw;
+  }catch(e){ w = 0; }
+  /* 量不到宽度（假 DOM）时按宽屏处理：右栏默认展开，跟以前一样 */
+  return !w || w >= 1048;
+}
 function sourcesOpenPref(){
   try{
     const saved = localStorage.getItem('scau-src');
     if(saved !== null) return saved !== '0';
   }catch(e){}
-  /* 没存过偏好时按窗口宽窄给默认值：窄屏（≤1240px）右栏是浮层，
-     默认展开会盖住正文，所以默认收起，点标题栏或 [n] 再展开。 */
-  try{ return !(window.innerWidth && window.innerWidth <= 1240); }catch(e){ return true; }
+  /* 没存过偏好时按可用宽度给默认值：并排放不下时右栏是浮层，默认展开会盖住正文，
+     所以默认收起，点标题栏或 [n] 再展开；宽屏下右栏是正文旁边的一列，默认展开。 */
+  return sourcesInline();
 }
 /* 点正文里的 [n] → 展开右栏并滚到那一条 */
 function chatCiteJump(n){
@@ -404,8 +421,10 @@ function chatSync(){
   const msgs = $('#msgs');
   /* 对话一开始只有祝福页；发过一轮之后把它收起来 */
   if(empty) empty.style.display = (msgs && msgs.children.length) ? 'none' : '';
-  /* 窄屏时右栏是浮层：切走对话视图就收起来，别盖着计算器 */
-  if(typeof VIEW === 'string' && VIEW !== 'chat' && !$('#sources').classList.contains('closed'))
+  /* 并排放不下时右栏是浮层：切走对话视图就把它收起来，免得下次回到对话页盖着正文；
+     宽屏下右栏是正文旁边的一列，用户收起/展开的选择要留住，别替他改。 */
+  if(typeof VIEW === 'string' && VIEW !== 'chat' && !sourcesInline()
+     && !$('#sources').classList.contains('closed'))
     chatSourcesToggle(false);
 }
 function chatScrollDown(){

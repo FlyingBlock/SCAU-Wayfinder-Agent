@@ -107,9 +107,14 @@ SHELL_CSS = r"""
   .vwrap{max-width:1000px;margin:0 auto;padding:20px}
 
   /* ============================ 主页对话 ============================ */
-  /* 参考 chat.deepseek.com：输出在上方（可滚动），输入框固定在底部中间。
+  /* 参考 chat.deepseek.com：输出在上方（可滚动），输入框固定在正文列底部中间。
      右边再挂一栏「引用来源」——正文里只留 [n] 标号，链接全部收在右栏。 */
-  .chatview{max-width:820px;width:100%;margin:0 auto;display:flex;height:100%;position:relative}
+  /* .chatview 铺满整个主区（不再把「正文 + 右栏」整块封在 820px 里居中）：
+     正文列（.chat-inner / .composer .inner / .chat-top .pills，上限都是 760px）
+     在「主区宽度 − 右栏」里居中，右栏则一直贴在主区最右边，也就是窗口最右边。
+     所以宽屏上右栏占的是正文两侧本来就空着的留白，正文列一分宽度都没少；
+     只有主区连「正文 800 + 右栏 248」都放不下时才改成浮层（见下面的 @media）。 */
+  .chatview{width:100%;display:flex;height:100%;position:relative}
   .chat-main{flex:1;min-width:0;display:flex;flex-direction:column;height:100%}
   .chat-scroll{flex:1;min-height:0;overflow-y:auto;padding:26px 20px 8px}
   .chat-inner{max-width:760px;margin:0 auto}
@@ -201,12 +206,21 @@ SHELL_CSS = r"""
                                      letter-spacing:.12em}
   .sources-head .rlb{display:none}
   .sources.closed .sources-head .rlb{display:block}
-  @media (max-width:1240px){
-    /* 窄屏：右栏浮在内容之上，不再挤占正文宽度 */
-    .chatview{max-width:100%}
+  /* 并排放不下时（主区 < 正文 800 + 右栏 248 = 1048px）：右栏改成浮在正文之上，不再占一列。
+     主区宽度 = 窗口宽 − 左侧栏（展开 248 / 收起 56），所以这段按窗口宽写：
+     左侧栏展开时窗口 ≤1295 就放不下了；左侧栏收起后少占 192px，窗口 ≥1104 仍然放得下。 */
+  @media (max-width:1295px){
     .sources{position:absolute;right:0;top:0;bottom:0;z-index:20;width:266px;flex-basis:266px;
              border-left:1px solid var(--bd);box-shadow:-10px 0 26px rgba(31,35,40,.13)}
     .sources.closed{width:44px;flex-basis:44px;box-shadow:none}
+  }
+  /* 左侧栏收起时的补偿：这条选择器比上面那段更具体，会把浮层规则盖回「一列」，
+     于是收起了左侧栏的窗口从 1104px 起右栏就照旧并排贴右。
+     口径与对话脚本里的 sourcesInline()（门槛 1048px）一致。 */
+  @media (min-width:1104px){
+    .sidebar.closed ~ .appmain .sources{position:static;right:auto;top:auto;bottom:auto;z-index:auto;
+             width:248px;flex-basis:248px;box-shadow:none}
+    .sidebar.closed ~ .appmain .sources.closed{width:44px;flex-basis:44px}
   }
   /* ---------- 对话里的卡片（活动/赛事 · 附件 · 关键时间） ---------- */
   .cards-wrap{margin-top:16px}

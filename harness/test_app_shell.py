@@ -191,12 +191,21 @@ def test_chat_sources_layout() -> None:
         ('id="sources-count"', "右栏标题带条数"),
     ):
         check(frag in markup, why)
-    check(".chatview{max-width:820px" in APP.appshell.SHELL_CSS
+    check(".chatview{width:100%" in APP.appshell.SHELL_CSS
+          and ".chatview{max-width" not in APP.appshell.SHELL_CSS,
+          "对话区铺满主区：宽屏下右栏贴到窗口最右边，不再连正文一起封在 820px 里")
+    check(".chat-inner{max-width:760px" in APP.appshell.SHELL_CSS
+          and ".composer .inner{max-width:760px" in APP.appshell.SHELL_CSS
           and ".sources{flex:0 0 248px" in APP.appshell.SHELL_CSS,
-          "外壳 CSS 里 .chatview 是 flex 容器、.sources 是 248px 的右栏")
-    check("@media (max-width:1240px)" in APP.appshell.SHELL_CSS
+          "外壳 CSS 里正文列仍是 760px、.sources 是右边那 248px 的一列")
+    check("@media (max-width:1295px)" in APP.appshell.SHELL_CSS
           and ".sources{position:absolute" in APP.appshell.SHELL_CSS,
-          "窄屏下右栏改成浮层（不挤占正文宽度）")
+          "主区放不下「正文 800 + 右栏 248」时右栏改成浮层（不挤占正文宽度）")
+    check("@media (min-width:1104px)" in APP.appshell.SHELL_CSS
+          and ".sidebar.closed ~ .appmain .sources{position:static" in APP.appshell.SHELL_CSS,
+          "左侧栏收起后可用宽度变多，右栏从 1104px 起就并排贴右")
+    check("function sourcesInline()" in APP.CHAT_JS and "w >= 1048" in APP.CHAT_JS,
+          "右栏默认开合按「主区放得下 1048px」判断（与 CSS 里的断点同一口径）")
     # 正文里只留 [n]，网址交给右栏：这两条是本次改动的核心口径
     check("stripUrls" in APP.CHAT_JS and "data-cite=" in APP.CHAT_JS,
           "对话脚本会把正文网址收进右栏、把 [n] 渲染成可点标号")
