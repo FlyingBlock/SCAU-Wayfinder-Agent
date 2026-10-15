@@ -107,8 +107,10 @@ SHELL_CSS = r"""
   .vwrap{max-width:1000px;margin:0 auto;padding:20px}
 
   /* ============================ 主页对话 ============================ */
-  /* 参考 chat.deepseek.com：输出在上方（可滚动），输入框固定在底部中间 */
-  .chatview{max-width:820px;width:100%;margin:0 auto;display:flex;flex-direction:column;height:100%}
+  /* 参考 chat.deepseek.com：输出在上方（可滚动），输入框固定在底部中间。
+     右边再挂一栏「引用来源」——正文里只留 [n] 标号，链接全部收在右栏。 */
+  .chatview{max-width:820px;width:100%;margin:0 auto;display:flex;height:100%;position:relative}
+  .chat-main{flex:1;min-width:0;display:flex;flex-direction:column;height:100%}
   .chat-scroll{flex:1;min-height:0;overflow-y:auto;padding:26px 20px 8px}
   .chat-inner{max-width:760px;margin:0 auto}
   .chat-empty{padding:5vh 4px 22px;text-align:center;color:var(--mut)}
@@ -134,14 +136,78 @@ SHELL_CSS = r"""
   .ans code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:12.5px}
   .ans a{color:var(--acc)}
   .ans .err-line{margin-top:10px}
+  /* 正文里的 [n]：只留标号，链接点开是右栏那条来源 */
+  a.cite{color:var(--acc);cursor:pointer;text-decoration:none;font-size:11.5px;
+         padding:0 1px;vertical-align:super;line-height:1;font-family:ui-monospace,Consolas,monospace}
+  a.cite:hover{text-decoration:underline;background:var(--accbg);border-radius:3px}
+  a.cite.miss{color:var(--mut);text-decoration:none;cursor:default}
+  /* 流式输出时的光标 */
+  .cursor{display:inline-block;width:7px;height:1em;background:var(--acc);
+          vertical-align:-2px;margin-left:1px;animation:blink 1s steps(2,start) infinite}
+  @keyframes blink{to{visibility:hidden}}
+  /* 正文里出现过的网址被收进右栏后留下的提示（点击展开右栏） */
+  .ans .url-strip{font-size:12px;color:var(--mut);background:var(--soft);
+                  border:1px dashed var(--bd);border-radius:7px;padding:5px 9px;margin:8px 0;cursor:pointer}
+  .ans .url-strip b{color:var(--acc);font-weight:600}
   .chat-trace{margin-top:16px;font:12.5px/1.7 ui-monospace,Consolas,monospace;color:var(--mut);
               white-space:pre-wrap;background:var(--soft);border:1px solid var(--bd);
               border-radius:8px;padding:10px;max-height:210px;overflow:auto}
   .chat-trace summary{cursor:pointer;font-weight:600}
-  .chat-refs{margin-top:15px;padding-top:12px;border-top:1px solid var(--bd);
-             font-size:13px;color:var(--mut)}
-  .chat-refs div{margin:5px 0;word-break:break-all}
 
+  /* ---------- 右侧「引用来源」栏 ---------- */
+  .sources{flex:0 0 248px;width:248px;display:flex;flex-direction:column;min-height:0;
+           border-left:1px solid var(--bd);background:var(--bg)}
+  .sources-head{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding:13px 12px 11px;
+                border-bottom:1px solid var(--bd)}
+  .sources-head .t{flex:1;min-width:0;font-weight:650;font-size:13.5px;white-space:nowrap;
+                   overflow:hidden;text-overflow:ellipsis}
+  .sources-head .n{font-weight:400;color:var(--mut);font-size:12px}
+  .src-toggle{flex:0 0 auto;width:26px;height:26px;padding:0;border:1px solid transparent;
+              background:none;color:var(--mut);border-radius:7px;cursor:pointer;font-size:13px;
+              display:flex;align-items:center;justify-content:center}
+  .src-toggle:hover{background:var(--hover);color:var(--fg)}
+  .sources-body{flex:1;min-height:0;overflow-y:auto;padding:9px 11px}
+  .sources-foot{flex:0 0 auto;border-top:1px solid var(--bd);padding:7px 11px;font-size:11px;
+                color:var(--mut);line-height:1.5}
+  .src-sec{margin:2px 0 8px;font-size:11.5px;font-weight:700;color:var(--mut);letter-spacing:.05em}
+  .src-grp{margin:9px 0;display:flex;flex-direction:column;gap:5px}
+  .src-item{border:1px solid var(--bd);border-left:3px solid var(--acc);border-radius:8px;
+            padding:7px 9px;background:var(--bg);font-size:12.5px;line-height:1.5}
+  .src-item.web{border-left-color:var(--pri)}
+  .src-item.stale{border-left-color:var(--warn)}
+  .src-item.hit{border-left-color:var(--ok)}
+  .src-item.ghost{border-left-color:var(--bd);color:var(--mut)}
+  .src-item .h{display:flex;gap:6px;align-items:baseline}
+  .src-item .idx{flex:0 0 auto;font-weight:700;color:var(--acc);
+                 font-family:ui-monospace,Consolas,monospace}
+  .src-item .ti{flex:1;min-width:0;font-weight:600;word-break:break-word}
+  .src-item .mt{color:var(--mut);font-size:11.5px;margin-top:3px;word-break:break-word}
+  .src-item .lk{display:block;margin-top:4px;color:var(--acc);text-decoration:none;
+                font-size:11.5px;word-break:break-all}
+  .src-item .lk:hover{text-decoration:underline}
+  .src-item .chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+  .src-trace{margin:6px 0 0;padding:7px 8px;background:var(--soft);border:1px solid var(--bd);
+             border-radius:7px;font:11.5px/1.6 ui-monospace,Consolas,monospace;color:var(--mut);
+             white-space:pre-wrap;word-break:break-word;max-height:190px;overflow:auto}
+  /* 检索命中列表里的 [n]：不画成链接，链接在右栏 */
+  .ans .hit .src-n{margin-left:6px;color:var(--acc);font-size:11.5px;
+                   font-family:ui-monospace,Consolas,monospace}
+  .sources.closed{flex-basis:44px;width:44px}
+  .sources.closed .sources-body,.sources.closed .sources-foot,.sources.closed .sources-head .t,
+  .sources.closed .src-sec,.sources.closed .src-grp{display:none}
+  .sources.closed .sources-head{flex-direction:column;gap:6px;padding:11px 0}
+  .sources.closed .src-toggle{transform:rotate(180deg)}
+  .sources.closed .sources-head .rlb{writing-mode:vertical-rl;font-size:11.5px;color:var(--mut);
+                                     letter-spacing:.12em}
+  .sources-head .rlb{display:none}
+  .sources.closed .sources-head .rlb{display:block}
+  @media (max-width:1240px){
+    /* 窄屏：右栏浮在内容之上，不再挤占正文宽度 */
+    .chatview{max-width:100%}
+    .sources{position:absolute;right:0;top:0;bottom:0;z-index:20;width:266px;flex-basis:266px;
+             border-left:1px solid var(--bd);box-shadow:-10px 0 26px rgba(31,35,40,.13)}
+    .sources.closed{width:44px;flex-basis:44px;box-shadow:none}
+  }
   /* ---------- 对话里的卡片（活动/赛事 · 附件 · 关键时间） ---------- */
   .cards-wrap{margin-top:16px}
   .cards-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;
@@ -579,8 +645,11 @@ function nav(view, sub, opts){
     v.classList.toggle('on', on);
     if(on && v.dataset.flex === '1') v.classList.add('vflex');
   });
+  /* 只有对话视图是「内部滚动」：.chatview 撑满高度、.chat-scroll 自己滚，
+     外壳这一层必须锁住，否则会多出一条滚动条；
+     计算器与口径说明是普通长页面，靠 #appmain 滚 —— 锁住它们页面就滚不动了。 */
   const main = $('#appmain');
-  if(main) main.classList.toggle('noscroll', VIEW !== 'chat');
+  if(main) main.classList.toggle('noscroll', VIEW === 'chat');
   if(VIEW === 'calc'){
     applySub();
     // 计算器首次进入才加载数据并计算（页面上还没有输入时不必算）

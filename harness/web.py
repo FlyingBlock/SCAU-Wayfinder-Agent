@@ -14,7 +14,11 @@
   GET  /api/status          库状态 + LLM/公网搜索配置灯
   GET  /api/search?q=&k=    纯检索（不花 token）
   GET  /api/article?id=     读某篇正文
-  GET  /api/ask?q=&rounds=  提问，SSE 流式返回 trace + answer
+  GET  /api/ask?q=&rounds=  提问，SSE 流式返回 trace + answer_delta + answer + cards
+
+改动 `app.py` / `appshell.py` / `calcpages.py` / `prompts.py` / `agent.py` / `llm.py`
+之后**刷新页面即生效**，不用重启服务 —— `page_html()` 会比对这几个文件的 mtime，
+变了就 `importlib.reload` 再重拼（见下面 `_PAGE_CACHE` 那段）。
   GET  /api/settings/llm    读当前 LLM 配置（key 只回显掩码）
   POST /api/settings/llm    保存 base URL / 模型名 / API key（可先真实调用验证）
   POST /api/settings/llm/test 只测试连通性，不保存
@@ -31,6 +35,7 @@
 """
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import socket
@@ -39,11 +44,12 @@ import threading
 import time
 import urllib.parse
 import webbrowser
-from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import appshell as appshell_mod      # noqa: F401  兼容旧引用
+from . import calcpages as calcpages_mod    # noqa: F401  兼容旧引用
 from .agent import Agent
-from .app import build_page
+from .app import build_page                 # noqa: F401  兼容旧引用
 from .calcpages import CALC_DOCS_PAGE, CALC_PAGE          # noqa: F401  兼容旧引用
 from .config import (
     AUTH_ENV_KEYS,
@@ -63,10 +69,48 @@ from .store import Store
 from .websearch import WebSearcher
 
 
-@lru_cache(maxsize=1)
+#: 页面 HTML 的缓存：内容 + 拼出它时那几个源文件的 mtime。
+#: 为什么不用 @lru_cache：那是「进程活多久缓存多久」，改完 app.py / appshell.py /
+#: calcpages.py / prompts.py 必须重启服务才看得到效果 —— 调前端与提示词最烦这个。
+#: 现在按源文件 mtime 失效：正常跑（文件没动）零开销，改了文件刷新页面即见效。
+#: 注意要 `importlib.reload` 而不是只重拼页面 —— 改的是 .py 源码，
+#: 内存里的模块还是旧的那份，只重拼等于什么都没变（真踩过一次）。
+_PAGE_CACHE: dict = {"key": None, "html": ""}
+#: 重载顺序 = 依赖顺序（先底层，后视图层），否则 app 重载时抓到的还是旧的 prompts。
+_PAGE_MODULES = ("llm", "prompts", "agent", "appshell", "calcpages", "app")
+
+
+def _page_modules():
+    mods = []
+    for name in _PAGE_MODULES:
+        mods.append(importlib.import_module(f"{__package__}.{name}"))
+    return mods
+
+
+def _page_sources_key():
+    files = []
+    for mod in _page_modules():
+        try:
+            files.append(os.path.getmtime(mod.__file__))
+        except (OSError, TypeError):
+            files.append(0.0)
+    return tuple(files)
+
+
 def page_html() -> str:
-    """单页应用 HTML（拼一次就缓存，页面几万字，不必每次请求重拼）。"""
-    return build_page()
+    """单页应用 HTML（源文件没改就复用，改了自动重载并重拼）。"""
+    key = _page_sources_key()
+    if _PAGE_CACHE["key"] != key:
+        if _PAGE_CACHE["key"] is not None:      # 首次不走 reload：模块刚导入
+            for mod in _page_modules():
+                try:
+                    importlib.reload(mod)
+                except Exception:               # noqa: BLE001 - 重载失败就用旧的
+                    pass
+        # 走模块属性而不是导入时绑定的那个名字 —— 重载后它已经指向新函数
+        _PAGE_CACHE["html"] = _page_modules()[-1].build_page()
+        _PAGE_CACHE["key"] = key
+    return _PAGE_CACHE["html"]
 
 
 # --------------------------------------------------------------------------- #
@@ -940,7 +984,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------ #
     def _ask(self) -> None:
-        """SSE：先推 trace 事件，最后推 answer + done。"""
+        """SSE：先推 trace，生成时推 answer_delta，最后推 answer（含引用）+ cards + done。"""
         q = self._query()
         question = (q.get("q") or "").strip()
         rounds = int(q.get("rounds") or SETTINGS.agent_max_rounds)
@@ -957,8 +1001,19 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload.encode("utf-8"))
             self.wfile.flush()
 
+        def delta(piece: str, final: bool = False) -> None:
+            """流式增量：正文片段 + 「说完了」标记。
+
+            final 那一次不带正文 —— 前端据此把光标收掉、等最后的 answer 事件
+            （它带引用来源与 token 用量）补全。
+            """
+            if piece:
+                sse("answer_delta", {"text": piece})
+            if final:
+                sse("answer_end", {})
+
         if not question:
-            sse("answer", {"text": "问题为空", "error": "", "citations": ""})
+            sse("answer", {"text": "问题为空", "error": "", "citations": []})
             sse("done", {})
             return
         dry = (q.get("dry") or "").lower() in ("1", "true", "yes")
@@ -967,14 +1022,14 @@ class Handler(BaseHTTPRequestHandler):
                                                     "base URL / 模型名 / API key 即可（也可运行 "
                                                     "python -m harness.cli setup-key）。"
                                                     "想先看检索结果就勾上「仅检索验证」。",
-                           "citations": ""})
+                           "citations": []})
             sse("done", {})
             return
 
         st = Store(SETTINGS.crawl.db_path)
         if st.count_articles() == 0:
             sse("answer", {"text": "", "error": "库内还没有语料，请先运行：python -m harness.cli crawl --scope narrow",
-                           "citations": ""})
+                           "citations": []})
             sse("done", {})
             st.close()
             return
@@ -1014,20 +1069,27 @@ class Handler(BaseHTTPRequestHandler):
             sse("trace", {"text": text})
 
         try:
-            ans = agent.answer(question, max_rounds=rounds, trace=trace, dry_run=dry)
+            # 流式：模型每吐一段正文就推一个 answer_delta，前端边收边画。
+            # 注意 SSE 事件名不能叫 "error"（EventSource 会把它当连接故障处理），
+            # 所以错误一律走 answer 事件里的 error 字段。
+            ans = agent.answer(question, max_rounds=rounds, trace=trace, dry_run=dry,
+                               on_delta=delta)
             if dry:
+                # 正文只给数量与结论，具体链接照例全在右侧「引用来源」栏，
+                # 免得这一页又把 18 条标题重复一遍。
                 body = ("### 仅检索验证（未调用 LLM）\n\n"
-                        f"共检索到 **{len(ans.evidence)}** 条证据：\n\n"
-                        + "\n".join(f"- [{e.n}] {e.title}（{e.pub_date or '无日期'}）"
-                                    for e in ans.evidence))
+                        f"共检索到 **{len(ans.evidence)}** 条证据，全部链接在右侧"
+                        "「引用来源」栏；正文里只留 `[n]` 标号。\n\n"
+                        "要判断检索质量，看右栏的标题/日期/来源即可；"
+                        "想连线看证据原文，点右栏每条的链接。")
                 sse("answer", {"text": body, "error": "",
-                               "citations": agent.build_citations(ans),
+                               "citations": ans.citations,
                                "usage": f"最终 Prompt {len(ans.prompt)} 字符（未送模型）"})
             else:
                 sse("answer", {
                     "text": ans.text,
                     "error": ans.error,
-                    "citations": agent.build_citations(ans),
+                    "citations": ans.citations,
                     "usage": llm.usage.line(),
                 })
             # ⑦ 卡片：活动/赛事 + 附件 + 关键时间。单独一个事件推送，
@@ -1038,7 +1100,8 @@ class Handler(BaseHTTPRequestHandler):
             pass
         except Exception as e:
             try:
-                sse("answer", {"text": "", "error": f"{type(e).__name__}: {e}", "citations": ""})
+                sse("answer", {"text": "", "error": f"{type(e).__name__}: {e}",
+                               "citations": []})
             except Exception:
                 pass
         finally:
