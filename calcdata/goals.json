@@ -11,7 +11,7 @@
     "  华南农生科党发〔2026〕4号 第十九条至第二十六条；",
     "  本地副本：data/research/life_zhcp_A.txt",
     "",
-    "metric 取值见 harness/calc/metrics.py 的 METRIC_DEFS。",
+    "metric 取值见 wayfinder/calc/metrics.py 的 METRIC_DEFS。",
     "credits_earned 的门槛值写 0 是占位：运行时会替换成所选培养方案的总学分。"
   ],
 

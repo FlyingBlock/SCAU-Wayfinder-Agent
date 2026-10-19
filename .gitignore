@@ -7,16 +7,19 @@
 # Windows 文件权限排查留下的报告（可删）
 .acl-reports/
 
-# 抓取数据（含校内语料，指南 §10.7 要求数据本地化，不入库）
+# 抓取数据（含校内语料，要求数据本地化，不入库）
 #
-# 注意：计算器的数据在 calcdata/（不在 data/ 下），所以不受这一条影响。
-# 那四个 JSON 是要进 git 的 —— clone 下来必须就能算出结果。
-# data/calc/ 是**可选**的本地覆盖目录：把 calcdata/ 里的某个文件复制过去
-# 再改，就会覆盖仓库自带的版本，且不会被 git 跟踪。
-data/
+# 计算器的数据在 calcdata/（不在 data/ 下），不受这一条影响。
+# data/calc/ 是可选的本地覆盖目录：把 calcdata/ 里的某个文件复制过去再改，
+# 就会覆盖仓库自带的版本，且不会被 git 跟踪。
+data/*
+!data/README.md
 *.db
 *.db-wal
 *.db-shm
+
+# 测试临时目录（跑完会自动清理）
+_test_tmp/
 
 # Python
 __pycache__/

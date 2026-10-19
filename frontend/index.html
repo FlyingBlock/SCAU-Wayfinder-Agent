@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<!-- 单页应用外壳：对话 / 计算器 + 设置弹窗。样式外链，脚本由 /assets/js/main.js 以 ES Module 装配。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCAU Wayfinder · 学生发展信息助手</title>
+<link rel="stylesheet" href="/assets/css/shell.css">
+<link rel="stylesheet" href="/assets/css/calc.css">
+</head>
+<body>
+<div class="plan" id="plan">
+
+  <aside class="sidebar" id="sidebar">
+    <div class="side-top">
+      <button class="menu-btn" id="menu-btn" type="button" title="收起 / 展开侧边栏">☰</button>
+      <div class="brand">🌾 SCAU Wayfinder</div>
+    </div>
+    <nav class="side-nav" id="side-nav">
+    <div class="nv-group">对话与计算</div>
+    <a href="#/chat" data-view="chat" data-sub=""><span class="ic">💬</span><span class="lb">主页对话</span></a>
+    <a href="#/calc/scores" data-view="calc" data-sub="scores"><span class="ic">📊</span><span class="lb">绩点计算器</span></a>
+    <div class="nv-group">绩点计算器</div>
+    <a href="#/calc/scores" class="sub" data-view="calc" data-sub="scores"><span class="ic">①</span><span class="lb">我的成绩</span></a>
+    <a href="#/calc/goals" class="sub" data-view="calc" data-sub="goals"><span class="ic">②</span><span class="lb">门槛对照</span></a>
+    <a href="#/calc/acts" class="sub" data-view="calc" data-sub="acts"><span class="ic">③</span><span class="lb">活动篮</span></a>
+    <a href="#/calc/rules" class="sub" data-view="calc" data-sub="rules"><span class="ic">④</span><span class="lb">计算口径</span></a>
+    </nav>
+    <div class="side-bot">
+      <button type="button" class="side-btn" id="settings-btn"
+              title="模型 / 附件与 OCR / 账号与登录">
+        <span class="ic">⚙️</span><span class="lb">设置</span></button>
+      <a class="side-btn" id="side-docs" href="#/calc/rules"
+         title="计算器数据口径说明（④ 计算口径 里也有）">
+        <span class="ic">📐</span><span class="lb">数据口径说明</span></a>
+    </div>
+    <div class="side-foot">华南农业大学 · 本地运行</div>
+  </aside>
+
+  <div class="appmain" id="appmain">
+
+  <section class="view on vflex" id="view-chat" data-flex="1">
+    <div class="chatview" id="chatview">
+      <div class="chat-main">
+        <div class="chat-top"><div class="pills" id="pill-chat"><span class="pill">加载中…</span></div></div>
+        <div class="chat-scroll" id="chat-scroll">
+          <div class="chat-inner">
+            <div class="chat-empty" id="chat-empty">
+              <h2>今天想了解点什么？</h2>
+              <div class="sub2">华南农大校内通知与公开信息检索 · 正文只标 [n] 引用 ·
+                找到的链接全在右侧「引用来源」栏 · 计算器在左侧栏</div>
+              <div class="chat-sugs">
+                <button class="sug" type="button" data-q="生物专业可以参加什么竞赛？走什么发展路线？">🧭 生物专业竞赛与发展路线</button>
+                <button class="sug" type="button" data-q="生命科学学院保研条件和时间线是什么？">🎓 保研条件与时间线</button>
+                <button class="sug" type="button" data-q="生物化学实验技能大赛怎么报名？往年什么时候办？">🧪 生化大赛怎么报名</button>
+                <button class="sug" type="button" data-q="大创项目什么时候申报？需要什么条件？">💡 大创申报</button>
+              </div>
+            </div>
+            <div class="msgs" id="msgs"></div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="inner">
+            <div class="cbox">
+              <textarea id="q" rows="1" placeholder="给 SCAU Wayfinder 发送消息，例如：生物专业可以参加什么竞赛？"></textarea>
+              <button class="send" id="go" title="发送（Enter）">➤</button>
+            </div>
+            <div class="crow">
+              <button type="button" id="find">只检索不生成</button>
+              <label>补检索轮数
+                <select id="rounds"><option>1</option><option selected>2</option><option>3</option></select>
+              </label>
+              <label><input type="checkbox" id="dry"> 仅检索验证（不调模型，不花 token）</label>
+              <span style="margin-left:auto"></span>
+              <span class="ex" data-q="生物专业毕业后主要去哪就业？">生物就业去向</span>
+              <span class="ex" data-q="推免需要哪些材料？">推免材料</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="sources" id="sources">
+        <div class="sources-head">
+          <span class="rlb">引用来源</span>
+          <span class="t">🔗 引用来源 <span class="n" id="sources-count"></span></span>
+          <button type="button" class="src-toggle" id="sources-toggle"
+                  title="收起 / 展开「引用来源」栏">⟨</button>
+        </div>
+        <div class="sources-body" id="sources-body">
+          <div class="src-item ghost">还没有检索结果 —— 提一个问题，找到的资料链接会全部列在这里。</div>
+        </div>
+        <div class="sources-foot">正文里只有 <b>[n]</b> 标号；本栏汇总本次检索命中的全部链接。</div>
+      </aside>
+    </div>
+  </section>
+
+<section class="view" id="view-calc">
+  <div class="vwrap">
+    <div class="tabs">
+      <button data-tab="profile" class="on">① 我的成绩</button>
+      <button data-tab="goals">② 门槛对照</button>
+      <button data-tab="acts">③ 活动篮</button>
+      <button data-tab="rules">④ 计算口径</button>
+    </div>
+    <div class="pills" id="pill-calc"><span class="pill">加载中…</span></div>
+    <div class="wrap">
+      <div id="left">
+
+    <!-- ================= ① 我的成绩 ================= -->
+    <section id="tab-profile">
+      <div class="card">
+        <h2>专业与基本情况 <span class="sub">选专业后自动导入该专业培养方案里的全部课程</span></h2>
+        <div class="grid">
+          <div class="fld"><label>专业</label><select id="major"></select></div>
+          <div class="fld"><label>入学年份</label>
+            <input type="text" id="grade" placeholder="如 2024"></div>
+          <div class="fld"><label>专业总人数（用于算排名百分位）</label>
+            <input type="number" id="cohort" min="0" placeholder="如 120"></div>
+          <div class="fld"><label>我的名次</label>
+            <input type="number" id="rank" min="0" placeholder="如 15"></div>
+        </div>
+        <div class="note" id="major-note"></div>
+      </div>
+
+      <div class="card">
+        <h2>成绩录入 <span class="sub">只填你已出分的课；百分制直接填分数，五级制填 优秀/良好/中等/及格</span></h2>
+        <div class="row" style="margin-bottom:10px">
+          <span class="termchip" id="term-label">全部学期</span>
+          <button class="ghost mini" id="term-all">显示全部学期</button>
+          <button class="ghost mini" id="clear-scores">清空成绩</button>
+          <span style="margin-left:auto"></span>
+          <span id="score-progress" class="sub" style="font-size:12.5px;color:var(--mut)"></span>
+        </div>
+        <div class="scroll"><table id="course-table">
+          <thead><tr>
+            <th style="width:78px">代码</th><th>课程</th><th class="num" style="width:56px">学分</th>
+            <th style="width:70px">性质</th><th style="width:96px">成绩</th>
+            <th style="width:64px">重修</th><th style="width:56px">绩点</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <h2>其他指标 <span class="sub">不填的项按「数据缺失」处理，相关门槛会标成待补数据</span></h2>
+        <div class="grid" id="metric-form"></div>
+      </div>
+    </section>
+
+    <!-- ================= ② 门槛对照 ================= -->
+    <section id="tab-goals" class="hide">
+      <div class="card">
+        <h2>路线总览 <span class="sub">保研 / 考研 / 奖学金分别要什么</span></h2>
+        <div id="goal-overview"></div>
+      </div>
+      <div id="goal-cards"></div>
+    </section>
+
+    <!-- ================= ③ 活动篮 ================= -->
+    <section id="tab-acts" class="hide">
+      <div class="card">
+        <h2>具体赛事名录 <span class="sub" id="comp-sub">加载中…</span></h2>
+        <div class="note" id="comp-basis"></div>
+        <div class="row" style="margin-top:10px;align-items:flex-start">
+          <button id="refresh-online" title="抓取学校官网名录页与竞赛通知栏目，和内置数据对账">🔄 刷新联网</button>
+          <div id="refresh-status" class="sub" style="flex:1;min-width:220px;font-size:12.5px;color:var(--mut)"></div>
+        </div>
+        <div id="comp-online"></div>
+        <details style="margin-top:8px"><summary>数据来源（内置名录页 / 联网抓取清单）</summary>
+          <div id="comp-sources" class="src" style="margin-top:6px"></div></details>
+      </div>
+      <div class="card">
+        <h2>筛选 <span class="sub">默认只看「具体赛事名录」——就是学校文件里点名的那 110 个比赛</span></h2>
+        <div class="row">
+          <label class="sub" style="font-size:12.5px;color:var(--mut)">清单
+            <select id="f-kind">
+              <option value="competition">具体赛事名录（内置 + 联网）</option>
+              <option value="general">通用加分项</option>
+              <option value="">全部</option>
+            </select></label>
+          <label class="sub" style="font-size:12.5px;color:var(--mut)">名录附录
+            <select id="f-appendix"><option value="">全部</option></select></label>
+          <label class="sub" style="font-size:12.5px;color:var(--mut)">类别
+            <select id="f-cat"><option value="">全部</option></select></label>
+          <label class="sub" style="font-size:12.5px;color:var(--mut)">级别
+            <select id="f-level"><option value="">全部</option></select></label>
+          <label class="sub" style="font-size:12.5px;color:var(--mut)">只看有分数的
+            <input type="checkbox" id="f-scored" checked></label>
+          <input type="text" id="f-q" placeholder="搜活动名 / 关键词" style="min-width:190px">
+          <span style="margin-left:auto"></span>
+          <span id="act-count" class="sub" style="font-size:12.5px;color:var(--mut)"></span>
+        </div>
+      </div>
+      <div id="act-list"></div>
+    </section>
+
+    <!-- ================= ④ 计算口径 ================= -->
+    <section id="tab-rules" class="hide">
+      <div id="rules-body"></div>
+    </section>
+
+  </div>
+
+  <!-- ================= 右侧：实时结果 ================= -->
+  <aside>
+    <div class="card basket">
+      <h2>实时结果 <span class="sub">改任何输入都会立刻重算</span></h2>
+      <div id="live"></div>
+    </div>
+    <div class="card">
+      <h2>活动篮 <span class="sub" id="basket-count">0 项</span></h2>
+      <div id="basket-list"><div class="note">还没有添加活动。到「③ 活动篮」里挑。</div></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost mini" id="basket-clear">清空活动篮</button>
+        <button class="ghost mini" id="export">导出 JSON</button>
+      </div>
+    </div>
+  </aside>
+    </div>
+  </div>
+</section>
+  </div>
+</div>
+
+<!-- ===================== ⚙️ 设置：模型 + 附件/OCR ===================== -->
+<div class="bd hide" id="set-bd">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="set-title">
+    <div class="set-tabs">
+      <button type="button" class="on" data-tab="llm">🧠 模型</button>
+      <button type="button" data-tab="ocr">🖼 附件与 OCR</button>
+      <button type="button" data-tab="auth">🔐 账号与登录</button>
+    </div>
+
+    <section id="set-pane-llm">
+    <h2 id="set-title">🧠 模型设置</h2>
+    <div class="small">任何 <b>OpenAI 兼容</b>端点都能接：填 base URL、模型名、API key。
+      保存后立即生效，同时写入仓库根的 <span class="mono">.env</span>（下次启动仍然有效）。</div>
+
+    <div class="presets" id="set-presets"></div>
+
+    <div class="fld">
+      <label for="set-base">Base URL（OpenAI 兼容端点，不含 /chat/completions）</label>
+      <input id="set-base" type="text" spellcheck="false" autocomplete="off"
+             placeholder="https://api.deepseek.com">
+    </div>
+    <div class="fld">
+      <label for="set-model">模型名称</label>
+      <input id="set-model" type="text" spellcheck="false" autocomplete="off"
+             placeholder="deepseek-chat">
+    </div>
+    <div class="fld">
+      <label for="set-key">API Key</label>
+      <input id="set-key" type="password" spellcheck="false" autocomplete="new-password"
+             placeholder="sk-…">
+    </div>
+
+    <div class="msg hide" id="set-msg"></div>
+
+    <div class="row" style="margin-top:14px">
+      <button id="set-save">保存并验证</button>
+      <button class="ghost" id="set-test">测试连接</button>
+      <button class="ghost" id="set-close">关闭</button>
+      <span class="small" id="set-file" style="margin-left:auto"></span>
+    </div>
+    <div class="small" style="margin-top:10px">
+      命令行等价写法：<span class="mono">python -m wayfinder setup-key</span>
+    </div>
+    </section>
+
+    <section id="set-pane-ocr" class="hide">
+    <h2>🖼 附件与 OCR</h2>
+    <div class="small">通知的 <span class="mono">.pdf / .doc / .docx / .xls / .xlsx / .ppt / 压缩包</span>
+      会被自动下载到项目内的 <span class="mono" id="ocr-dir">data/attachments/</span> 并抽出正文与表格，
+      正文参与检索与回答。图片、扫描件里的文字需要 OCR —— 填百度智能云的
+      <b>API Key / Secret Key</b>（要开通「通用文字识别」）即可，不填则跳过图片文字。</div>
+
+    <div class="fld">
+      <label for="ocr-provider">OCR 服务商</label>
+      <select id="ocr-provider">
+        <option value="none">不启用（图片里的文字不提取）</option>
+        <option value="baidu">百度智能云 OCR</option>
+      </select>
+    </div>
+    <div class="fld">
+      <label for="ocr-key">百度 OCR API Key（AK）</label>
+      <input id="ocr-key" type="password" spellcheck="false" autocomplete="new-password"
+             placeholder="控制台「应用列表」里的 API Key">
+    </div>
+    <div class="fld">
+      <label for="ocr-secret">百度 OCR Secret Key（SK）</label>
+      <input id="ocr-secret" type="password" spellcheck="false" autocomplete="new-password"
+             placeholder="与 AK 成对出现">
+    </div>
+    <label class="chk"><input type="checkbox" id="ocr-accurate" checked>
+      用高精度版（<span class="mono">accurate_basic</span>，免费额度更少但更准）</label>
+    <div class="small" id="ocr-hint" style="margin-top:6px"></div>
+    <div class="small" id="ocr-astat" style="margin-top:6px"></div>
+
+    <div class="msg hide" id="ocr-msg"></div>
+
+    <div class="row" style="margin-top:14px">
+      <button id="ocr-save">保存并验证</button>
+      <button class="ghost" id="ocr-test">测试识别</button>
+      <button class="ghost" id="ocr-clear">清除凭据</button>
+      <button class="ghost" id="ocr-close">关闭</button>
+    </div>
+    <div class="small" style="margin-top:10px">
+      命令行等价写法：<span class="mono">python -m wayfinder ocr --api-key … --secret-key …</span>
+      ｜ 重新解析已有附件：<span class="mono">python -m wayfinder attach --all</span>
+    </div>
+    </section>
+
+    <section id="set-pane-auth" class="hide">
+    <h2>🔐 账号与登录</h2>
+    <div class="small">校内有一部分栏目在<b>统一身份认证</b>（CAS）后面。在这里填一次学号与密码，
+      之后抓取撞到登录墙会<b>自动登录</b>；登录页有图形验证码时，脚本会把验证码图下载下来交给
+      <b>OCR</b> 识别再填回去，认错就换一张重试。<br>
+      凭据只落在本机 <span class="mono">.auth/</span>（已 gitignore、权限收紧到当前用户），
+      <b>不进 <span class="mono">.env</span>、不进日志、不发模型</b>。
+      滑块 / 短信 / 双因子这类交互式验证脚本过不去，那种站点请用 Cookie 导入。</div>
+
+    <div class="fld">
+      <label for="auth-user">学号 / 工号</label>
+      <input id="auth-user" type="text" spellcheck="false" autocomplete="username"
+             placeholder="2023xxxxxxxx">
+    </div>
+    <div class="fld">
+      <label for="auth-pass">统一身份认证密码</label>
+      <input id="auth-pass" type="password" spellcheck="false" autocomplete="new-password"
+             placeholder="留空表示不改动已保存的密码">
+    </div>
+    <div class="fld">
+      <label for="auth-service">登录后跳转的目标地址（service，一般不用改）</label>
+      <input id="auth-service" type="text" spellcheck="false" autocomplete="off"
+             placeholder="http://portal.scau.edu.cn/">
+    </div>
+    <div class="fld">
+      <label for="auth-captcha-url">验证码图片地址（可选：登录页里自动找不到时才手填）</label>
+      <input id="auth-captcha-url" type="text" spellcheck="false" autocomplete="off"
+             placeholder="留空 = 自动在登录页里找">
+    </div>
+    <div class="fld" style="max-width:220px">
+      <label for="auth-rounds">验证码最多换几张图重试</label>
+      <input id="auth-rounds" type="number" min="1" max="8" step="1" value="3">
+    </div>
+
+    <label class="chk"><input type="checkbox" id="auth-save-pw" checked>
+      把密码存到本地（不勾选则只在这次登录用，采集时没法自动登录）</label>
+    <label class="chk"><input type="checkbox" id="auth-auto" checked>
+      抓取撞到登录墙时自动登录（<span class="mono">AUTH_AUTO_LOGIN</span>）</label>
+    <label class="chk"><input type="checkbox" id="auth-ocr" checked>
+      验证码用 OCR 识别（<span class="mono">AUTH_OCR_CAPTCHA</span>，需要先配好 OCR）</label>
+    <div class="small" id="auth-ocr-hint" style="margin-top:6px"></div>
+    <div class="small" id="auth-stat" style="margin-top:6px"></div>
+
+    <div class="msg hide" id="auth-msg"></div>
+
+    <div class="hide" id="auth-cap-wrap"
+         style="margin-top:12px;padding:10px;border:1px solid var(--bd);border-radius:8px">
+      <div class="small">OCR 没认出这张验证码 —— 照着图填一次就能继续（不填也行，点「换一张」再让 OCR 试）：</div>
+      <img id="auth-cap-img" alt="验证码" style="display:block;margin:8px 0;max-width:200px;
+           border:1px solid var(--bd);border-radius:6px;background:#fff">
+      <div class="row">
+        <input id="auth-cap-text" type="text" spellcheck="false" autocomplete="off"
+               placeholder="验证码" style="width:150px">
+        <button id="auth-cap-go">提交验证码</button>
+        <button class="ghost" id="auth-cap-retry">换一张</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <button id="auth-save">保存并登录</button>
+      <button class="ghost" id="auth-save-only">只保存，不登录</button>
+      <button class="ghost" id="auth-clear">清除凭据</button>
+      <button class="ghost" id="auth-logout">退出登录</button>
+      <button class="ghost" id="auth-close">关闭</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <span class="small" id="auth-file" style="margin-left:0"></span>
+    </div>
+    <div class="small" style="margin-top:10px">
+      命令行等价写法：<span class="mono">python -m wayfinder login</span>
+      ｜ 不用密码（CAS 有滑块时用这个）：<span class="mono">python -m wayfinder login --cookie</span>
+      ｜ 看当前会话：<span class="mono">python -m wayfinder whoami</span>
+    </div>
+    </section>
+  </div>
+</div>
+<!-- ===================== 轻提示（加入活动篮 / 附件下载） ===================== -->
+<div class="toast" id="toast"></div>
+<script type="module" src="/assets/js/main.js"></script>
+</body>
+</html>

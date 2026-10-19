@@ -1,836 +1,223 @@
-# SCAU 学生发展信息 Harness
+# SCAU Wayfinder
 
-这是一个还在不断更新的 Harness。
+华南农业大学校内公开信息检索 + 学业规划助手。
 
-现阶段它做五件事：抓华南农业大学的校内公开通知、存进本地数据库、做全文检索、让大模型带着引用回答问题、**算绩点与综测分**。问它「生物专业可以参加什么竞赛」这种题，它会自己拆成几条子查询（竞赛 / 大创 / 推免 / 考研 / 科研训练 / 就业 / 国际交流），先在校内语料里找，再去公网补赛事规则和时间表，证据不够就再找一轮，最后输出分路线的答案，每条结论后面挂 `[n]` 引用，指到具体的 URL、标题和发布时间。找不到的会单独列出来，不会编 URL 和日期。
+它做两件事：
 
-计算器（第五节）回答的是另一半问题：**我得考多少分、参加什么活动，才能拿到保研资格／奖学金。** 它把「保研要 GPA ≥ 3.20 且排名前 50%」这种门槛，换算成「剩下 29 门课每门至少要考多少分」，并把能加分的活动做成可以勾选的活动篮，实时算出综测和推免两条线各能加多少。
+1. **问答**：抓校内公开通知入库 → 中文全文检索 → 拆子查询、站内 + 公网多轮检索 →
+   带 `[n]` 引用的分路线回答；答案下面再确定性抽取**活动 / 附件 / 关键时间**卡片。
+2. **计算**：绩点、综测、保研 / 考研 / 奖学金门槛、活动加分，全部离线、不花 token。
 
 ---
 
 ## 快速开始
 
-### 1. 准备环境
-
-需要 Python 3.10 以上。**不用 pip install**，核心代码只用标准库（`urllib` / `sqlite3` / `http.server` / `json`），`lxml` 装了更好（正文抽得准一点，没装自动退回正则）。
-
-```bash
-git clone https://github.com/FlyingBlock/SCAU-Wayfinder-Agent.git
-cd SCAU-Wayfinder-Agent
-```
-
-### 2. 配 API key
-
-**两种填法，写的是同一个文件（仓库根 `.env`）：**
+在仓库根目录（含 `wayfinder/` 的那一层）执行：
 
 ```powershell
-# ① 命令行：输入时不回显，会先真实调用一次验证，通过了才写进 .env
-python -m harness.cli setup-key
+# 1) 抓一批校内语料（首次约 30-60 分钟；只用量计算器可跳过）
+python -m wayfinder crawl --scope narrow
+
+# 2) 启动 Web（自动打开 http://127.0.0.1:8848/）
+python -m wayfinder web
 ```
+
+Windows 也可以直接双击 **`Launch.cmd`**。
+
+第一次使用建议先跑一次自检：
 
 ```powershell
-# ② Web 界面：python -m harness.cli web 之后，点左侧栏底部「⚙️ 模型设置」
-#    填 base URL + 模型名称 + API key，可先「测试连接」再「保存并验证」
+python -m wayfinder doctor
 ```
 
-界面上填的三项对应 `.env` 里的 `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY`，**保存后立即生效，不用重启服务**，重启后也还在。DeepSeek 的 key 申请地址：<https://platform.deepseek.com/api_keys>
-
-想换模型（Ollama / vLLM / 通义 / 智谱 / Kimi / OpenAI 都行）：设置面板里有常见端点的预设按钮，点一下自动填 base URL 与模型名；也可以把 `.env.example` 复制成 `.env` 手改。任何 OpenAI 兼容端点都能接。
-
-> 只用量计算器的话，**这一步可以跳过**——计算器不联网、不调模型、不花钱。
-
-### 3. 抓语料
+配置模型（任意 OpenAI 兼容端点；计算器不需要）：
 
 ```powershell
-# 42 个高信号栏目，够起步用，大概 30-60 分钟
-python -m harness.cli crawl --scope narrow
-
-# 更全：165 个 P1 栏目
-python -m harness.cli crawl --scope p1
-
-# 种子全量 349 条
-python -m harness.cli crawl --scope all
+python -m wayfinder setup-key
+# 或：python -m wayfinder web → 左下角「⚙️ 设置 → 🧠 模型」
 ```
 
-### 4. 提问
-
-```powershell
-# 命令行
-python -m harness.cli ask "生物专业可以参加什么竞赛？走什么发展路线？"
-
-# 或者开 Web 界面，浏览器访问 http://127.0.0.1:8848/
-# 左侧栏在这几个视图之间切换：主页对话 / 绩点计算器（我的成绩·门槛对照·活动篮·计算口径）/ 数据口径说明
-python -m harness.cli web
-```
-
-第一次跑建议先自检，确认种子、数据库、计算器数据、LLM、公网搜索都通：
-
-```powershell
-python -m harness.cli doctor
-```
-
-下面所有命令都假设**当前目录是仓库根目录**（也就是含 `harness/` 包的那一层）。
+> 环境要求：Python 3.10+。核心只用标准库（`urllib` / `sqlite3` / `http.server` / `json`），
+> 不需要 `pip install`；装了 `lxml` / `python-docx` 会自动用上，没有则退回内置解析器。
 
 ---
 
-## 命令一览
+## 功能一览
 
-| 命令 | 作用 |
-|---|---|
-| `harness.cli setup-key` | 交互式配置并验证 LLM key / 端点 / 模型（写 `.env`） |
-| `harness.cli doctor` | 自检：种子 / 数据库 / 计算器数据 / LLM 连通性 / 公网搜索 / 登录会话与账号 |
-| `harness.cli login` | **登录统一身份认证**（账号密码表单登录，验证码自动走 OCR；或导入浏览器 Cookie），会话存到 `.auth/` |
-| `harness.cli whoami` | 看当前会话状态：cookie 数、能否进某个页面 |
-| `harness.cli fetch <url>` | 带会话抓一个 URL 看内容（排错登录墙用） |
-| `harness.cli crawl --scope narrow\|p1\|p2\|all` | 抓取校内栏目群入库（有会话时带上；撞墙会用保存的账号自动登录） |
-| `harness.cli search "关键词"` | 只在已抓语料里检索，**不花 token**，调词和排错用它 |
-| `harness.cli ask "问题" [--rounds N] [--json out.json]` | 多轮检索 + 带引用生成 |
-| `harness.cli ask "问题" --dry-run` | 不调 LLM，只跑检索并打印证据和最终 Prompt |
-| `harness.cli web [--port 8848]` | 启动 Web 界面（含计算器页面） |
-| `harness.cli calc` | **计算器数据自检**：专业 / 课程 / 门槛 / 活动 / 口径 |
-| `harness.cli gpa ...` | **算平均学分绩点**（可带活动篮） |
-| `harness.cli goals ...` | **对照保研 / 考研 / 奖学金门槛**，并给出课程目标分 |
-| `harness.cli activities` | **列出全部可加分活动**与加分依据（`--list competition` 只看名录里的具体赛事） |
-| `harness.cli competitions` | **联网刷新赛事名录**：抓《学生竞赛奖励办法》名录页与竞赛通知栏目，和内置数据对账 |
-| `harness.cli parse <文件…>` | **解析本地办公文件**（pdf/doc/docx/xls/xlsx/ppt/pptx/zip/图片…），看能抽出什么 |
-| `harness.cli attach` | **下载并解析库内通知的附件**（存到 `data/attachments/`，正文入库参与检索） |
-| `harness.cli attachments` | 列出已下载的附件、解析状态、落盘路径（`--search 关键词` 搜附件正文） |
-| `harness.cli ocr` | **配置 / 测试 OCR**（百度智能云），图片与扫描件靠它提字 |
-| `harness.maint audit` | 体检语料：登录墙 / 导航标题 / 空正文各占多少 |
-| `harness.maint purge` | 清理登录墙、导航标题、空正文这类脏条目 |
-| `harness.maint refetch` | 重抓可疑条目，修标题和正文 |
-
-常用参数：
-
-```powershell
-# 只抓一个栏目，调试用
-python -m harness.cli crawl --url https://life.scau.edu.cn/tzgg/list.htm --max-pages 3
-
-# 抓之前清空库（谨慎）
-python -m harness.cli crawl --scope narrow --reset
-
-# 检索时限定时间窗和返回条数
-python -m harness.cli search "挑战杯" --since 2025-01-01 --top-k 20
-
-# 不打印中间过程，导出完整 JSON
-python -m harness.cli ask "保研条件" --quiet --json out/answer.json
-
-# 看看某个办公文件里到底有什么（附件解析的排错入口）
-python -m harness.cli parse "报名表.xlsx" "评审细则.pdf" --chars 800
-
-# 补抓/重跑库内通知的附件（默认只补没解析过的；--all 连解析过的也重跑）
-python -m harness.cli attach --limit 20
-python -m harness.cli attach --article 137 --force
-
-# 配置百度 OCR（图片与扫描件里的文字），配置前可先 --test 验证
-python -m harness.cli ocr --api-key <AK> --secret-key <SK>
-python -m harness.cli ocr --image 报名表截图.png
-```
-
----
-
-## 附件与图片解析（含 OCR）
-
-校内通知最值钱的信息常常**不在正文里**：竞赛通知的正文只有一句「详见附件」，
-报名截止、赛程、名额表、加分表、课程名单全在 `.pdf / .doc / .xlsx` 里。这一层就是
-把它们变成可检索、可引用的文本。
-
-**下载存哪**：抓取时自动把附件下载到项目内的固定目录
-`data/attachments/<年>/<月>/<sha1前10位>_<文件名>`（`data/` 已在 `.gitignore` 中，
-校内材料不会进 git）。同一份内容只存一份——按内容哈希去重，通知里换个附件名也认得出。
-单篇通知默认最多 6 个附件、单个 25MB，可用 `ATTACH_MAX_FILES` / `ATTACH_MAX_MB` 调。
-
-**支持哪些格式**（共 42 种扩展名，全部本机解析，不需要任何 key）：
-
-| 类别 | 格式 | 怎么解的 |
+| 能力 | 说明 | 入口 |
 |---|---|---|
-| Word | `.docx` `.docm` | OOXML：正文 + 表格 + 文本框/SVG + 内嵌图片 |
-| Word（老） | `.doc` `.wps` | 自带的 OLE2 解析器：FIB → 片段表 → 正文；片段表不可用时退回「可见文本扫描」并如实标注 |
-| Excel | `.xlsx` `.xlsm` | openpyxl（装了就用）→ 退回 zip+XML；多工作表 |
-| Excel（老） | `.xls` | 自带的 BIFF8 解析器：SST/ROW/LABELSST/NUMBER/RK/MULRK |
-| PPT | `.pptx` + 老 `.ppt` | OOXML：逐页正文 + 备注；老 ppt 走可见文本扫描 |
-| PDF | `.pdf` | **自研纯标准库 PDF 解析**：交叉引用表/引用流、对象流、Flate/LZW/ASCII85/RunLength、ToUnicode CMap、CTM×Tm 变换链。仓库内 59 份真实 PDF 里 53 份完整抽出正文（含 442 页的学生手册），6 份是**扫描件**（无文本层，已自动改走 OCR） |
-| 压缩包 | `.zip` | 递归解析包内文件（带条目数/解压总量上限与路径穿越防护） |
-| 图片 | `.jpg .png .bmp .gif .tiff .webp` | 交给 OCR |
-| 文本 | `.txt .csv .html .rtf .md .json` | 直接解码（RTF 的 `\'xx` 多字节序列按 GB18030 成组解码） |
-
-**OCR**：图片（以及 PDF 里的内嵌位图、docx/xlsx/pptx 里的图片、压缩包里的图片）
-默认走百度智能云通用文字识别。填 key 的两种方式：
-
-```powershell
-python -m harness.cli ocr --api-key <AK> --secret-key <SK>   # 命令行（会先真实调用验证）
-# 或 Web 界面 →「⚙️ 设置」→「🖼 附件与 OCR」→ 填 AK/SK →「保存并验证」
-```
-
-- **不填也能用**：文档类附件照常解析，只是图片里的字提取不到，卡片上会写明原因。
-- 高精度版 / 标准版可切换（`OCR_ACCURATE=0` 用标准版，免费额度更多）。
-- access_token 缓存在 `data/cache/baidu_ocr_token.json`（30 天有效），同一张图按内容哈希只调一次。
-- 错误码会翻译成人话：`17 → 今日调用量已达上限`、`216201 → 图片尺寸不合法`…
-
-**它怎么进到问答里**：解析出的正文写进 `attachment` 表并建独立的 FTS 索引；
-检索时若命中附件正文，会把附件所属的**那篇通知**顶上（正文里只有「详见附件」，
-靠正文永远搜不到），并把附件正文按预算接在该证据后面送进模型。对话页的附件卡片
-会显示「已解析 N 字 / N 张表 / OCR N 张」，点「看解析正文」直接读抽出来的文本，
-不必先下载 PDF。卡片上还有「📁 本地副本」指向项目里存的那一份。
-
-```powershell
-python -m harness.cli attachments --search 报名截止        # 在附件正文里搜
-python -m harness.cli attachments --article 137            # 看某篇通知的附件解析状态
-python -m harness.cli doctor --test-ocr                    # 自检里顺带测一次 OCR
-```
-
-**已知局限**（都会如实写在附件的 `note` 里，不会假装成功）：
-少数旧 PDF 的 ToUnicode 表被上游工具写残（字符映射不全），抽出的文本会有缺字；
-老 `.doc` 的片段表畸形时退回扫描模式，可能漏字；`.rar / .7z` 不支持（需先手动解压）。
+| 校内检索 | SQLite + FTS5，中文 bigram 分词 + 覆盖度重排 | `search` / `/api/search` |
+| 多轮问答 | 意图分解 → 站内 + 公网检索 → 缺口补检索 → 带引用生成 | `ask` / `/api/ask` |
+| 流式输出 | SSE 推 `trace` / `answer_delta` / `answer` / `cards` | `frontend/js/features/chat/` |
+| 对话卡片 | 活动、附件、关键时间；分值来自已核验名录，不由模型生成 | `qa/cards.py` |
+| 附件解析 | pdf / doc / docx / xls / xlsx / ppt / zip / 图片，42 种扩展名 | `documents/` |
+| OCR | 百度智能云（可选），图片与扫描件提字 | `documents/ocr.py` |
+| 登录墙 | CAS 表单登录 / Cookie 导入 / 验证码 OCR，凭据只落 `.auth/` | `crawl/auth.py` |
+| 计算器 | 绩点 / 综测 / 推免 / 门槛 / 活动篮 / 赛事名录 | `calc/` + `frontend/js/features/calc/` |
 
 ---
 
-## 需要登录的页面（统一身份认证）
+## 架构
 
-校内有一部分栏目在 `cas.scau.edu.cn`（统一身份认证）后面：`xtw.scau.edu.cn` 的正文、
-融合门户、教务系统、信息公开等。裸请求拿回来的是登录页 HTML，所以早期版本只能
-**识别出来然后跳过**（`login_required`）——这也是为什么 `harness.maint purge` 里有一条
-「清理登录墙脏数据」。
+前后端彻底解耦：
 
-现在有三条路，**推荐第一条**：
-
-### ① 在设置里填一次账号密码，之后全自动
-
-打开 Web 界面 → 左下角「⚙️ 设置」→「🔐 账号与登录」，填学号 + 统一身份认证密码，
-点「保存并登录」。之后：
-
-- **采集时撞到登录墙会自己登录**（`AUTH_AUTO_LOGIN=1`，默认开），登完把这一栏目重放一次，
-  cookie 落盘，后面的栏目直接复用。不用先手动 `login`。
-- **登录页有图形验证码时全自动过**：脚本把验证码图下载下来（`<img>` 里的、`data:` 内联的、
-  页面上找不到就按常见路径猜），交给 OCR 识别，填回表单提交。认错就**换一张**再来，
-  默认最多 3 张（`AUTH_CAPTCHA_ROUNDS`）。
-- OCR 也认不出来时，弹窗里会**把那张验证码图显示出来让你填一次**，填完直接登录完成
-  ——不用重新走一遍流程。
-- OCR 用「🖼 附件与 OCR」分页里配的那对百度 AK/SK。**没配 OCR 也能用**：
-  账号密码照存不误，只是遇到验证码时得在弹窗里手填一次。
-
-```powershell
-# 命令行等价写法（一样会自动识别验证码）
-python -m harness.cli login
-python -m harness.cli doctor          # 看「登录会话 / 账号凭据 / 自动登录」三行
+```
+frontend/  (纯静态 HTML/CSS/ES Modules)
+    │  main.js 只装配；features/* 只做界面组织、用户事件、订阅 JSON / SSE
+    ▼  HTTP + SSE
+wayfinder/server/http.py     传输层：路由、静态资源、SSE 帧
+    ▼
+wayfinder/api/*              协议层：参数解析 → 用例调用 → JSON
+    ▼
+wayfinder/{crawl,corpus,documents,qa,calc,settings}/    领域层：计算与数据
+    ▲
+wayfinder/app.py             组装根：build_services → build_router → run_web
+wayfinder/main.py            入口：只把命令转发给 CLI / app
 ```
 
-采集时想按未登录状态跑（对照排查）加 `--no-auto-login` / `--no-auth`。
+三条硬约束：
 
-### ② 也可以：导入浏览器 Cookie（不碰密码）
-
-控件级验证（滑块、短信、双因子）脚本过不去，那种站点只能用这条。在浏览器里正常登录，
-F12 → Network → 随便点一个已登录的请求 → Request Headers → 把整行 `Cookie:` 的值复制出来：
-
-```powershell
-python -m harness.cli login --cookie          # 交互粘贴（不回显）
-python -m harness.cli login --cookie "JSESSIONID=...; ..."   # 或者直接给
-```
-
-会话保存到 `.auth/cookies.json`（**已在 .gitignore，不会被提交**）。会话过期了就再导一次。
-
-### ③ 也是：纯命令行表单登录
-
-```powershell
-python -m harness.cli login --user 2023xxxxxxxx   # 密码交互输入，不进 shell 历史
-python -m harness.cli login --service https://jwxt.scau.edu.cn/
-python -m harness.cli login --no-captcha          # 关掉验证码 OCR，对照排查用
-```
-
-它会自动解析登录页的隐藏字段（`execution` / `lt` / `_eventId`…，不写死参数名），
-有验证码就下载 + OCR 识别，提交后 302 跟到目标站，**并且真的再请求一次目标页确认进得去**
-才说成功。
-
-| 参数 | 说明 |
-|---|---|
-| `--forget` | 清掉已保存的会话与账号密码 |
-| `--no-save` | 只存 Cookie，不把账号密码写进 `.auth/credentials.json` |
-| `--no-captcha` | 不尝试 OCR 识别验证码（要看清楚失败原因时用） |
-| `--service` | 登录后要跳转的目标地址，默认融合门户 |
-
-### 怎么用 / 怎么确认
-
-```powershell
-python -m harness.cli whoami                                  # 看会话状态
-python -m harness.cli whoami https://xtw.scau.edu.cn/xxx.htm  # 试着进某个页面
-python -m harness.cli fetch https://xtw.scau.edu.cn/xxx.htm   # 把内容抓下来看
-python -m harness.cli crawl --url https://xtw.scau.edu.cn/tzgg/list.htm   # 带着会话抓
-```
-
-`crawl` 默认就会带 `.auth/` 里的会话（没有会话但有账号时，撞墙自动登录）；想按未登录状态跑
-加 `--no-auth`。如果带了会话还被弹回认证页，栏目会被标成 `auth_expired`，提示你重新 `login`。
-
-### 设置面板里那几个开关（写在 `.env`）
-
-| 变量 | 默认 | 作用 |
-|---|---|---|
-| `AUTH_AUTO_LOGIN` | `1` | 撞到登录墙时自动用保存的账号登录 |
-| `AUTH_OCR_CAPTCHA` | `1` | 登录页有验证码时用 OCR 识别 |
-| `AUTH_CAPTCHA_ROUNDS` | `3` | 验证码认错时最多换几张图重试（1–8） |
-| `AUTH_SERVICE` | 空 | 登录后跳转的目标地址，空＝融合门户 |
-| `AUTH_CAPTCHA_URL` | 空 | 验证码图片地址；页面里自动找不到时才需要手填 |
-
-**账号密码不进 `.env`**，只落在 `.auth/credentials.json`。
-
-### 边界（请先读）
-
-- **只用你自己的账号，只抓你本来就能看到的页面。** 这个功能是「让我自己的会话能进我自己的页面」，
-  不是绕过权限；用它去拉别人的成绩、批量刷非公开数据，这里不提供也不支持。
-- **凭据只落在本地 `.auth/`**：`cookies.json` 与（可选的）`credentials.json`，
-  写入时已尽量收紧为仅当前用户可读，且不进 git、不进日志、不发给模型。
-  接口只回显打码后的账号（`202***56`）与「密码已设置」，**密码原文从不出现在任何响应里**。
-  不要把这两个文件贴到聊天、issue 或截图里。
-- **改设置只允许本机**：`--host 0.0.0.0` 暴露到局域网时，别人既看不到也改不了你的账号。
-- **验证码只在登录那一刻用一次**：图片不落盘、不入库、不发模型；OCR 额度会按验证码张数消耗
-  （默认最多 3 张 × 2 个引擎 = 最多 6 次调用/次登录，可见额度的账号请留意）。
-- **滑块 / 短信 / 双因子仍然过不去**，脚本会明确报「拦路虎」并让你改走 Cookie 导入。
-- **别把密码写在命令行**（会进 shell 历史）：直接 `python -m harness.cli login` 交互输入，
-  或者用设置面板。
-- **会话很短命**：教务类往往几十分钟到几小时就失效，失效就重新登录（自动登录会在撞墙时再试一次）。
-- **抓取仍受限速保护**：并发别调高，认证站点更容易触发风控。
-
-### 自测（不需要真账号）
-
-```powershell
-python harness/test_auth.py
-```
-
-它在本机 `127.0.0.1` 起一个假 CAS 和一个假业务站，跑通
-「解析表单 → 登录 → 存 Cookie → 复用会话 → 抓取入库」，还覆盖验证码那条线：
-**带图形验证码的登录页**（假 OCR 注入，不联网、不花额度）能自动过、
-认错一次会换一张重试、一直认错会如实失败并把图带回前端、
-人工填验证码能把登录做完、采集撞墙时自动登录并抓取入库、
-以及无会话时照旧跳过。全程不联网、不碰你真实的 `.auth/`。
+1. **前端不计算**：分数、绩点、最佳成就、检索与匹配全部由后端返回；
+   前端只渲染与订阅。GPA 列读 `effective_gp`，活动卡读 `best`，
+   通道口径读 catalog。
+2. **后端不拼界面**：Python 里不出现 HTML/CSS/JS；SSE 的 `trace` 只推
+   `{step, data}`，中文步骤、文案、按钮和布局由 `frontend/` 负责。
+3. **主程序只组装**：`wayfinder/app.py` 创建服务、装配路由、启动传输层；
+   `wayfinder/main.py` 只做入口分发，业务命令在 `cli.py`，领域逻辑在子包。
 
 ---
 
-## 系统提示词（harness 的口径就写在这里）
-
-整个 harness 的「人设、检索范围、引用纪律、输出结构」都在 `harness/prompts.py` 里，
-改口径只改这一个文件（`agent.py` 只负责把证据填进去）。四段各自管一件事：
-
-| 常量 | 作用 | 关键约束 |
-|---|---|---|
-| `SYSTEM` | 所有调用共用的系统提示词 | 唯一事实来源是检索到的校内/公网证据；不得编造 URL/日期/赛事名/金额；校内只覆盖公开页面（登录墙后面的不在内）；涉及全国性赛事规则与含金量时以公网证据为准；每个事实后跟 `[n]`，无证据的判断必须写「推测：」；超 18 个月标 `⚠️可能已过期`；还要求把活动写成**完整全称**，否则对不上名录卡片 |
-| `DECOMPOSE` | 问题 → 4-8 条可检索子查询（site / web 分流） | 出现「活动 / 竞赛 / 报名 / 最近」这类意图时，至少两条 site 查询去覆盖校内通知栏目里的近期活动 |
-| `GAP` | 判断证据够不够，不够再补哪些查询 | 额外检查两件事：有没有「具体能参加的活动」的证据、有没有时间（报名截止/比赛时间） |
-| `ANSWER` | 最终回答的结构 | 结论概览 → **近期可以参加的活动与竞赛** → 路线逐条展开 → 关键时间节点（表格）→ 本次未能证实（不许留空）→ 引用；活动名要与原文一致，系统要按名字去已核验名录匹配档位 |
-| `RERANK` | 候选网页打分（备用） | 正在报名、带截止日期的竞赛通知应给 9-10 分 |
-
-想换风格、加维度（比如把「就业」「出国」拆得更细），改这里的字符串即可，不用碰代码逻辑。
-
----
-
-## 主要功能
-
-**校内语料检索。** 种子文件里列了 349 个华南农大站点栏目，`narrow` 取其中 42 个信号最强的开始抓。抓到的文章进 SQLite，用 FTS5 建索引。
-
-**中文分词是自己切的。** FTS5 的 `unicode61` 会把一串连续汉字当成一个 token，查「推免」匹配不到「推荐免试」。所以入库时把汉字切成 bigram 再存，查询也切一遍。OR 召回之后，Python 侧再按「查询词覆盖率 + BM25 + 学院权重」重排，否则「竞赛 学分认定」会把「家庭经济困难认定」也捞上来。
-
-**多轮问答。** 问题先分解成子查询，站内和公网同时检索，让 LLM 判断证据够不够，不够就补检索（默认 2 轮），最后聚合证据生成答案。答案里每条结论都有引用编号，过期超过 18 个月的证据会标出来。
-
-**回答是流式出来的，链接全在右栏。** 生成阶段走 `stream: true`，模型每吐一段就通过 SSE 的
-`answer_delta` 推到前端，正文边收边画（右下角有个闪烁光标，`answer_end` 到了就收掉）。
-正文里**只有 `[n]` 标号，不出现任何网址**：本次检索用到的所有链接都在右侧的「引用来源」栏，
-分组列出——
-
-| 栏里的分组 | 什么时候有 |
-|---|---|
-| 本次回答引用 N 条 | 模型引用的全部证据（编号 / 标题 / 网址 / 日期 / 来源栏目 / ⚠️可能已过期） |
-| 检索命中 N 条 | 点「只检索不生成」时的命中列表 |
-| 正文里的直链 | 模型偶尔不听劝、把网址写进正文时，界面会把网址截下来收进这里，并在正文原位留一个标号 |
-| 检索过程 | 意图分解 / 检索轮次 / 缺口检测 / 证据聚合 / 卡片统计，收在一个可折叠块里 |
-
-这样做有两个实际好处：正文读起来干净，链接也不会因为模型把 URL 写错而点不开——栏里的链接
-来自后端的证据表，不是模型抄的。提示词里也相应去掉了原来「文末列一份 `[n] 标题 — URL`」的要求
-（那份列表现在由界面负责），并明确要求正文不写网址。
-
-流式这条路有三处容易翻车的地方，都做了处理（`harness/test_stream.py` 用假端点在本地跑）：
-思维链模型（`deepseek-flash` / `reasoner`）会先把 `max_tokens` 花在 reasoning 上、正文可能被截断，
-这时**先整段攒着**，确认完整才发（避免用户看到一段被推翻的正文）；预算真被吃光就**加预算再流一次**
-（而不是退回非流式，否则这段回答永远是「等一分钟然后一次性蹦出来」）；端点根本不支持 `stream`
-时自动退回非流式整段生成。已经发出去一半的失败不会重来——那会让用户看到两份正文。
-
-**公网搜索。** 默认走 DuckDuckGo Lite，Bing 备用。实测 `cn.bing.com` 会被重定向到百度，`www.bing.com` 返回的结果和查询完全无关，所以只当备胎。
-
-**Web 界面。** 标准库 `http.server` 写的，SSE 流式输出。双击仓库根目录的 `Launch.cmd` 也能开。
-改完 `app.py` / `appshell.py` / `calcpages.py` / `prompts.py` / `agent.py` / `llm.py`
-**刷新页面就生效，不用重启服务**（`web.py` 按这几个文件的 mtime 自动重载并重拼页面）。
-
-**整个界面是一份单页应用**（`harness/app.py` 装配、`harness/appshell.py` 提供外壳），布局对齐 chat.deepseek.com：
-
-| 区域 | 内容 |
-|---|---|
-| 左侧栏 | 主页对话 · 绩点计算器（含① 我的成绩 / ② 门槛对照 / ③ 活动篮 / ④ 计算口径 四个子页）· 数据口径说明 · ⚙️ 设置（三个分页：🧠 模型 / 🖼 附件与 OCR / 🔐 账号与登录）。可收起成图标栏，窄屏自动变成浮层 |
-| 对话页 | **模型输出在上方**（可滚动），**输入框固定在正文列底部中间**；Enter 发送、Shift+Enter 换行，输入框随内容长高；正文**流式输出**（边生成边显示，带光标），检索过程收在右栏的折叠块里 |
-| 对话页右栏 | **引用来源**：本次检索找到的资料链接全部在这里（标题 / 网址 / 发布时间 / 来源栏目 / ⚠️过期标记），正文里只留 `[n]` 标号，点标号会展开右栏并滚到那一条。可收起成细条（`⟨` 按钮）。**宽屏下它是贴在整个页面最右边的一列**（正文列仍是 760px，右栏占的是正文两侧本来就空着的留白，不压缩正文）；主区放不下「正文 800 + 右栏 248 = 1048px」时才改成浮在正文之上，那种情况下默认收起 |
-| 计算器 | 四个子页 + 右侧实时结果，切换只切显隐，成绩与活动篮状态不丢（存在 localStorage） |
-
-对话页这两栏的宽度账是这么算的：`.chatview` 铺满整个主区（不再把「正文 + 右栏」整块封在 820px 里居中），正文列（`.chat-inner` / 输入框 / 状态徽标）上限 760px 并在「主区 − 右栏」里居中，右栏固定 248px、贴在主区最右边（也就是窗口最右边）。主区宽 = 窗口宽 − 左侧栏（展开 248 / 收起 56；窗口 ≤820px 时左侧栏本身是浮层、不占宽度）。于是「正文 800 + 右栏 248 = 1048px」放不下时（窗口 ≤1295px，或收起左侧栏后 ≤1103px）右栏才改成浮层。`harness/appshell.py` 里那两段 `@media` 与对话脚本的 `sourcesInline()` 是同一个 1048px 口径，别只改一边。
-
-切换视图走 hash 路由（`#/chat`、`#/calc/scores`、`#/calc/goals`、`#/calc/acts`、`#/calc/rules`），刷新后停在同一个视图；老地址 `/calc`、`/calc-docs` 仍然可用，会自动落到对应视图。
-
-左下角「⚙️ 模型设置」可以直接填 OpenAI 兼容端点的 base URL / 模型名 / API key：回车前先「测试连接」，点「保存并验证」会真实调一次模型，通过才写进 `.env`，同时立刻作用到当前进程（不用重启）。key 只以掩码回显，且只有从本机（127.0.0.1）打开页面才能改——`--host 0.0.0.0` 暴露到局域网时，别人改不了你的 key。
-
-**对话里的卡片：活动 / 附件 / 关键时间。** 答案下面不是只有一段文字，而是跟着一组卡片
-（`harness/cards.py`）：
-
-| 卡片 | 里面有什么 | 能做什么 |
-|---|---|---|
-| **活动 / 赛事** | 活动全称、主办、时间与报名截止、**综测与推免两套加分**（按成果档位列出）、级别与名录序号、加分依据文件名 | 「＋ 添加到活动篮」——一键写进计算器同一份 localStorage 状态，切到计算器立刻看到加分变多少 |
-| **附件** | 通知里挂的 pdf/doc/xlsx/zip（比赛报名表、赛程、名额表往往只在附件里），带文件类型标签与出处通知 | 「⬇ 下载」直达文件，或「↗ 打开原文」 |
-| **关键时间** | 从通知正文里抽出的报名截止 / 比赛时间 / 材料提交，截止类日期高亮 | 点回原通知 |
-
-三条硬规则，都是为了避免「看起来很专业但其实是编的」：
-
-1. **卡片不由模型生成。** 模型只负责写带 `[n]` 引用的正文；卡片是拿证据（标题、正文、
-   发布时间、附件链接）做确定性抽取，再去 `calcdata` 那张已核验的《学生竞赛奖励办法》
-   名录上匹配档位。分数与时间都能回溯到文件与证据编号。
-2. **匹配不上就说匹配不上。** 名录里没有的活动照实展示（时间、主办、原文链接），
-   卡上标「未匹配到已核验名录，暂不计入活动篮」，并指向计算器让它自己去搜——
-   **宁可不加分，也不发明分值**。匹配用归一化名称 + 包含度打分，同名赛事的不同赛道
-   （生命科学竞赛的科学探究类 / 创新创业类）靠赛道词区分。
-3. **只有能加分的活动才给入篮按钮。** 入篮写的是 `activity_id`，与计算器活动篮完全同一份状态，
-   两边永远一致。
-
-**采集阶段不烧 token。** 列表页和正文全靠正则加 lxml 抽，只有最后生成答案才调模型。一次完整问答大概 20k prompt + 3k completion。卡片装配也不调模型、不联网。
-
-**绩点 / 综测计算器。** 见下一节。它同样不烧 token、不联网，只读数据文件。
-
----
-
-## 绩点 / 综测 / 门槛计算器
-
-### 它回答什么问题
-
-| 你的问题 | 它给什么 |
-|---|---|
-| 我现在的绩点是多少？ | 按培养方案逐门课算加权平均学分绩点，另给一个「只计保研排名课程」的绩点 |
-| 保研要 GPA ≥ 3.20，我现在够吗？ | 逐条门槛判定 + 差多少 |
-| 不够的话，剩下的课要考多少分？ | 按学期列出每门课的目标分，并给难度评估和「偏科方案」 |
-| 德育分、体育分怎么加？ | 综测五个分项各自的基础分 + 加分，加分按细则上限截断 |
-| 参加什么活动能加分？加多少？ | 全部活动/竞赛/证书/学生工作的明细清单，标注分值来源与可信度 |
-| 我打算参加的这些加起来能加多少？ | 「活动篮」实时累加，分综测和推免两条线分别显示 |
-| 到底有哪些比赛可以参加？ | 「活动篮」按《学生竞赛奖励办法》名录逐条列出 110 个具体赛事卡片（T/A/B 类 + 序号 + 加分档位），点「🔄 刷新联网」还能看官方名录有没有更新、最近有哪些赛事在报名 |
-
-### 两条线，两套评分表
-
-这是这个计算器最关键的设计。**同一件事在「综测」和「推免」里分值往往不同**，混在一起算会误导人：
-
-| | 综测 | 推免综合评价 |
-|---|---|---|
-| 依据 | 生科院综测细则（华南农生科党发〔2026〕4号） | 生科院推免综合评价细则（2026年修订） |
-| 总分 | 100 分 = 德育 20 + 智育 65 + 体育 5 + 美育 5 + 劳育 5 | 100 分 = 学业成绩 85 + 创新能力 10 + 发展素养 5 |
-| 用途 | 奖学金、评优、评语归档 | 保研排名 |
-
-举例：一篇 **T2 类论文（第 1-2 作者）**在综测里按细则论文表算 **8 分**（智育创新能力加分，上限 10），在推免里按「T2 基础分 6」算 **6 分**。计算器把这两个数分开显示，不会加成一个 14。
-
-所以活动清单里每个成果都标着两套分值：
-
-```
-T2 类 第1-2作者
-  综测：+8 分 智育加分
-  推免：+6 分 创新能力
-```
-
-### 门槛：保研 / 考研 / 奖学金
-
-计算器预置 13 条路线，每条由若干条 `{指标, 比较符, 阈值}` 组成，判定是纯数据驱动的：
-
-| 路线 | 关键门槛 |
-|---|---|
-| **保研（推免）** | 前三学年 GPA ≥ 3.20（按官方折算＝百分制 82 分）；GPA 排名同届同专业前 50%；无不及格课程；CET-4 ≥ 425（或雅思 ≥5.5 / 托福 ≥80）；通过体测；无违纪处分 |
-| 保研 · 学业成绩（85 分） | = 个人绩点 ÷ 同班型最高绩点 × 85 |
-| 保研 · 创新能力（10 分） | 论文 / 竞赛 / 专利，见细则分值表 |
-| 保研 · 发展素养（5 分） | 荣誉 / 学生工作 / 志愿时长 / 国际交流 / 英语水平 / 服兵役 |
-| **考研** | 无校内成绩门槛（只有学历与体检要求）；生物类初试不考数学 |
-| **毕业与学位** | 修满总学分；创新创业学分 3 分；体测 ≥ 50 分（否则按结业处理）。**毕业与学位都没有 GPA 门槛**——2025 年新学位细则已删除旧版的「平均学分绩点 2.00」要求 |
-| 校级一 / 二 / 三等奖学金 | 学院参加综测人数的 2% / 6% / 10%；平均绩点 ≥ 3.00（＝80 分）；体测 ≥ 80 分 |
-| 生物科学（理科基地班）单列 | 一/二/三等比例 5% / 10% / 15%（比普通班宽松得多） |
-| 单项奖学金 | 8 个子项，比例 ≤1%，体测 ≥ 80 分 |
-| 国家奖学金 | 学习成绩与综测排名均在专业前 10%（或前 30% + 特别突出） |
-| 国家励志奖学金 | 需通过家庭经济困难认定 |
-
-**三道闸门**要特别留意，它们不加分但会让一切归零：体测 < 80 分不能评优评奖、前三年体测平均 < 50 分不能推免、体测 < 50 分毕业按结业处理。违纪处分会让本学年奖学金资格和推免资格同时失效。
-
-**绩点折算**严格按学校公示原文（《华南农业大学本科学生学籍管理实施细则》华南农办〔2021〕68号 第十二条（一）；同文条款见《华南农业大学本科学生学分制实施细则》华南农办〔2010〕88号 第八条（一））：**100 分 = 5.00 绩点，99 分 = 4.90 绩点，98 分 = 4.80 绩点……依此类推，低于 60 分 = 0 绩点**，即 `绩点 = 分数 ÷ 10 − 5`（60 分 = 1.00、70 分 = 2.00、80 分 = 3.00、90 分 = 4.00、100 分 = 5.00）。不分档，也不是 4.0 制。**通识选修、体育、实验课都计入平均学分绩点**（「已选课程均参与学期学分绩点的计算」，华南农办〔2016〕158号 第十一条）。补考/重修及格后一律折合 1.00 绩点（这 1.00 正是及格线 60 分的绩点），但**不及格的首修课程仍按 0 绩点计入**。
-
-> **这不是「原文不自洽时二选一」，而是唯一自洽的读法。** 从 100 分起每降 1 分减 0.10 绩点，一路降到 60 分正好是 1.00，再低就归 0，与「低于 60 分折算为 0 绩点」严丝合缝。另有两处交叉印证：① 同条（三）规定补考/重修及格后绩点折合 1.00，而这个 1.00 就是 60 分的绩点；② 同条的五级制 优秀 4.50／良好 3.50／中等 2.50／及格 1.50，在这条标尺上恰好是 95／85／75／65 分（若按「分数 ÷ 20」，1.50 要对应 30 分，与及格线直接矛盾）。折算表由 `harness/calc/loader.py` 在每次装载时对 60–100 分**逐分核对**，与官方口径不一致会在 `harness.cli calc` 和计算器页面上报警告。
-
-**同一个学生有两个绩点，因为学校文件给了两套重修口径**，计算器把两个都算出来、分开显示：
-
-| 口径 | 谁的规定 | 重修怎么算 | 用在哪儿 |
-|---|---|---|---|
-| 学籍 / 毕业 / 推免 | 学籍细则第十二条（二）（三）：平均学分绩点 = 全部学分绩点之和 ÷ 所修学分之和；补考和重修成绩按实际分数记载并标注，**及格及以上绩点折合 1.00** | 计入平均，但封顶 1.00（不及格的首修课按 0 计入） | 「平均学分绩点」「保研用学业绩点」、门槛判定、课程目标反推 |
-| 综合测评 / 评优 | 《本科生综合测评及评优实施办法》华农党发〔2020〕38号 第六条（一）：「**重修课程成绩不纳入平均绩点计算范围**」；生科院综测通知的执行口径是「教务系统导出的**不含重修课程及第二学位成绩**的平均绩点」 | 整门**不进**平均绩点 | 「综测智育用平均绩点（不含重修）」，即智育基础分（55 分）的分子 |
-
-有重修记录时这两个数不相等是正常的；没勾过「重修」时它们必然相同。第二学位 / 辅修成绩不在本工具的课程表里（只录入第一学位培养方案），所以「不含第二学位」天然满足。
-
-### 课程目标反推
-
-给定目标绩点，反推剩余课程需要的分数：
-
-```
-剩余课程所需平均绩点 = (目标绩点 × 总学分 − 已锁定绩点×学分) / 剩余学分
-```
-
-再用折算表反解成百分制分数（官方口径下这个反解是精确的：绩点 4.22 → 92.2 分、3.20 → 82.0 分、3.00 → 80.0 分、1.00 → 60.0 分）。因为平均绩点只约束 Σ(绩点×学分)，所以还会给「偏科方案」：
-
-```
-要在毕业时达到 gpa>=3.2 的绩点
-  剩余 89.0 学分需要平均绩点 4.62，折算成百分制约 96.2 分。
-  换一种打法：把学分最大的 11 门课冲到 95 分，其余 22 门课平均考 97 分即可。
-```
-
-（上例的可复现输入：生物技术专业，已修 90.5 学分且各门都是 68 分，当前绩点 1.80，剩 33 门共 89.0 学分。）
-
-如果数学上就达不到，会明确说「即使全部满分也只能到 X」。
-
-### 命令行用法
-
-```powershell
-# 数据自检
-python -m harness.cli calc
-
-# 算绩点（成绩可以用 --score 逐门给，也可以 --scores 传 JSON 文件）
-python -m harness.cli gpa --score C3001=88 --score B2001=76 -v
-
-# 对照门槛，并打印课程目标分
-python -m harness.cli goals --scores my.json --cohort 120 --rank 18 -v
-
-# 带上活动篮
-python -m harness.cli goals --scores my.json `
-  --activity competition-bio-team:"T1 类 一等奖 负责人" `
-  --activity volunteer-labour:每次x6
-
-# 列活动（默认全部；--list competition 只看名录里的具体赛事）
-python -m harness.cli activities --list competition
-
-# 联网刷新赛事名录：抓《学生竞赛奖励办法》名录页 + 竞赛通知栏目，与内置数据对账
-python -m harness.cli competitions
-```
-
-`--metric` 用来补量化指标，例如：
-
-```powershell
---metric cet4_score=452 --metric pe_pass=1 --metric pe_score=82 `
---metric moral_score=13 --metric major_top_gpa=4.2 --metric discipline=0
-```
-
-### Web 界面
-
-`python -m harness.cli web` 之后访问 <http://127.0.0.1:8848/>，计算器在左侧栏「📊 绩点计算器」下，分成四个子页：
-
-1. **我的成绩** —— 选专业自动导入该专业全部课程，按学期录成绩；填四六级、体测、德育分等指标
-2. **门槛对照** —— 每条路线的门槛逐条打勾/打叉、差多少，以及课程目标分
-3. **活动篮** —— **按《学生竞赛奖励办法》名录逐条列出的具体赛事卡片**（内置 110 项 + 联网新增），
-   每张卡片带名录序号、T/A/B 级别、用哪张加分表、综测与推免两套分值，勾进篮子后右侧实时累加；
-   顶部「🔄 刷新联网」抓学校官网与竞赛通知栏目，对账内置名录并列出「还有哪些其他活动」
-4. **计算口径** —— 绩点折算表、综测分项与上限、加分系数、赛事名录与档位组合口径、数据出处
-
-结果存在浏览器 localStorage 里，刷新和切换视图都不丢。
-
-### 数据怎么改
-
-**计算器里没有一个学校特有的数字，全部在仓库根的 `calcdata/` 下的五个 JSON 文件里。** 学校改细则只改数据，代码一行都不用动：
-
-| 文件 | 内容 |
-|---|---|
-| `rules.json` | 百分制→绩点折算表、重修口径、综测五个分项与加分上限、加分路由、级别/名次系数 |
-| `majors.json` | 专业培养方案：学分构成、逐门课程的代码/名称/学分/学期/是否计绩点/是否计排名 |
-| `goals.json` | 各条路线的门槛，每条写成 `{metric, op, value}` |
-| `activities.json` | 通用加分项清单：类别、级别、主办方、加分通道与分值、报名时间、加分依据 |
-| `competitions.json` | **具体赛事名录**：《学生竞赛奖励办法》名录里的 110 个赛事（T 84 / A 16 / B 10）+ 每个赛事的加分档位模板 |
-
-`competitions.json` 是「活动篮」页上那些具体赛事卡片的内置数据：一条赛事 = 一个可以直接加进活动篮的
-`Activity`（id 形如 `comp-a1-01`）。它只做**档位组合**，数值全部抄自 `activities.json` 里已核验的表格行
-（`competition-bio-team` / `competition-nonbio` / `innovation-competition`），不发明新分值：
-
-| 档位 | 用在哪 | 综测 | 推免 |
-|---|---|---|---|
-| `t1` | 互联网+、大挑、小挑 | 创新创业类比赛表（国家级负责人 3 分…） | T1 类行（一等奖负责人 10 分…） |
-| `bio-t2` | 生物类 T 类（生命科学竞赛等） | 团体项目 T2 档（8/6/5/3） | T2 类行（10/6/4.2/3） |
-| `nonbio-t2` | 其余 T 类（数学建模、英语演讲…） | 按细则注 50% 折算（4/3/2.5…） | 国家级/省级行（8/6/5…） |
-| `grad-a` | 研究生创新实践系列大赛 | A 类行（6/4/3） | A 类行（7/4/2.8） |
-| `bio-b` / `nonbio-b` | 广东省十大学科竞赛 | B 类行（生物类全值 / 非生物类折半） | B 类行（4/2/1） |
-
-「某个赛事属于哪一档」是组合口径（详见每个档位的 `note`），所以名录类活动统一标 `provisional`，
-卡片上都写着档位依据与名录出处。**想改某个赛事的归类，改它那一条的 `profile` 即可。**
-
-`calcdata/` **是进 git 的**（`data/` 被忽略是为了不把校内语料传上去，但计算器数据必须 clone 下来就能用）。
-
-想保留自己的版本、又不想被 `git pull` 覆盖？在 `data/calc/` 下放同名文件即可 ——
-**那里的文件按个覆盖 `calcdata/`**，而且 `data/` 在 `.gitignore` 里不会被跟踪：
-
-```powershell
-# 例：只改培养方案，其余三个文件继续用仓库自带的
-mkdir data\calc
-copy calcdata\majors.json data\calc\majors.json
-# 然后编辑 data\calc\majors.json
-python -m harness.cli calc     # 会告诉你哪些文件被本地覆盖了
-```
-
-每个数据点都带 `source`（出处，写到条款号）和 `confidence`（可信度）：
-
-- `verified` —— 已对照官方原文核验
-- `provisional` —— 有公开依据但未拿到原文逐条核对
-- `provisional_adjustable` —— 规划用近似值，请自行替换
-- `unverified` / `adjustable` —— 分值无原文依据，界面上会标出来
-
-**重要：这些数值是规划用的，不是学籍依据。** 培养方案的课程学分、综测权重、加分表，各学院各年份都可能不同（例如同是 SCAU，生科院学业成绩用「个人绩点 ÷ 同班型最高绩点 × 85」，数学与信息学院用「GPA ÷ 5.0 × 85」，园艺学院又是另一套公式）。请用自己教务系统里的培养方案和本学院当年发布的实施细则核对。
-
-### 自测
-
-```powershell
-# 后端：不联网，直接跑引擎
-python data/research/smoke_calc.py
-
-# 赛事名录（活动篮里的具体赛事卡片）：解析 / 展开 / 联网对账 / 进篮实算，全程离线
-python data/research/smoke_competitions.py
-
-# 设置（⚙️）：配置层 + 端到端（自己起假 OpenAI 端点，不碰真 .env）
-python data/research/smoke_settings.py
-
-# 对话卡片：活动名清洗 / 名录匹配（含「不许硬凑」的反向用例）/ 时间抽取 / 附件成卡 / 与计算器同口径
-python data/research/smoke_cards.py
-
-# 卡片链路：自造库 → 真的起 http.server → /api/ask 的 SSE 里就得有 cards 事件（dry=1，不调模型）
-python harness/test_cards_api.py
-
-# 装配：整页 HTML 自洽（单页应用 / 滚动归属 / 计算器样式作用域 / 右栏结构 / node --check）
-python harness/test_app_shell.py
-
-# 流式生成：假 OpenAI 端点，验「增量下发 / 思维链不泄思考 / 截断不发作废正文 / 端点不支持 stream 时退回」
-python harness/test_stream.py
-
-# 附件解析与 OCR：各格式抽取 / .doc 两条路径 / .xls BIFF8 / 假百度 OCR / 落盘去重 / 附件 FTS / 越权路径
-python data/research/smoke_attach.py
-# 端到端：自起假校内站点 → 真 Crawler 抓正文+附件 → 附件正文进检索与最终 Prompt
-python data/research/smoke_attach_e2e.py
-# 需要 .xls 样本时先生成一份（自造 OLE2+BIFF8，不需要装 Excel）
-python data/research/make_xls_fixture.py data/research/ole2/sample.xls
-
-# 前端：需要一个正在跑的 web 服务
-python -m harness.cli web --port 8879 --no-open
-python data/research/smoke_web.py      --port 8879   # HTTP 接口 + 单页结构
-python data/research/smoke_ui.py       --port 8879   # 用假 DOM 实跑整页 JS（外壳/对话/计算器/卡片）
-python data/research/smoke_settings_ui.py --port 8879  # 用假 DOM 实跑设置弹窗 JS（含附件/OCR 分页）
-```
-
-`smoke_calc.py` 里有一批回归断言，包括几个踩过的坑：量纲不同的通道（第二课堂学分、志愿服务时长）不能被当成加分直加进综测总分；`bonus_cap` 必须真的截断；不及格的课不能计入已获学分；重修课要按封顶绩点算；绩点折算表逐分核对 `分数 ÷ 10 − 5`。
-
-`smoke_competitions.py` 覆盖赛事名录这条新链路：名录页解析（84/16/10 条、年份标题行不能被当成赛事）、每条赛事展开后 id 唯一且有非零分值、档位数值与已核验口径一致、联网新增赛事合并且不与内置重复、对账能认出新增/改名/级别变化/官方移除、通知标题与摘要分离、具体赛事进篮后综测与推免两条线各自加分并受上限约束。全程离线。
-
-`smoke_settings.py` 覆盖的是设置面板的两段：`.env` 合并写入（保留用户自己写的注释与其它配置、清掉旧的 `DEEPSEEK_*`、留空的字段不覆盖已存值）、保存后不重启是否立刻生效，以及「key 错 → 拒绝写盘」这条最要紧的失败路径。它自带的假 OpenAI 端点让全部断言都不需要真 key、不联网。
-
-`smoke_cards.py` 覆盖对话卡片这层：通知标题里切出活动名（去机构前缀、去文书尾巴、去届次）、与已核验名录匹配（**反向用例**：像但不是同一个赛事的必须匹配不上）、同名赛事不同赛道要分开、报名截止/比赛时间/材料提交的抽取（整段无换行的正文也要抽得到，且上一条的「截止」不能污染下一条）、附件成卡、以及「卡片入篮后的加分与卡片显示的分值同口径」。全程离线。
-
-`test_cards_api.py` 覆盖的是中间那一段：造一个临时库、塞三篇像华农通知的文章，真的起一个 http.server，用 `dry=1` 请求 `/api/ask`，检查 SSE 里确实有 `event: cards`、卡片内容对得上（含「选课通知不许混进活动卡」「未匹配的不给假分值」），以及库里没语料时降级成提示而不是 500。它不调模型、不联网。
-
-`test_stream.py` 覆盖流式这一段（假 OpenAI 端点，进程内起，不联网、不花 token）：正常流要分多次下发且 `reasoning_content`（思考过程）不混进正文；非思维链模型必须**边收边发**（第一段就到手，不是整段攒完）；思维链模型被截断时那段作废的正文一个字节都不许发出去，改走重试；端点回 400「不支持 stream」时要自动退回非流式，而不是把页面挂在「正在生成…」；`stream_chat` 自身出错要抛 `LLMError`（而不是漏出原始 `HTTPError`，那样上层兜不住）。
-
-`test_app_shell.py` 除了装配与语法，还钉住了这次的界面口径：右栏 `.sources` 的结构、宽屏下贴最右并排（`.chatview` 不再自封 820px）与放不下时的窄屏浮层、正文里的 `[n]` 可点、网址交给 `stripUrls` 收进右栏、提示词里不再要求模型输出文末「## 引用」清单。
-
-`smoke_attach.py` 覆盖附件与 OCR 这条链路（离线，60 项断言）：docx（现场生成带表格的样本）/ xlsx / pdf（含扫描件判定与内嵌图片抽取）/ .doc（真实学校文件，两条解析路径）/ .xls（自造 OLE2+BIFF8）/ csv / rtf（多字节 `\'xx` 成组解码）/ html / zip 递归 / 图片降级；百度 OCR 全程用**假端点**验证（取 token、token 落盘缓存、高精度 vs 标准版、同图只调一次、错误码翻译、未配置时不报错只跳过）；附件落盘按内容哈希去重、入库、附件 FTS 能回溯到所属通知、卡片带上解析结果；以及附件文件服务的**越权路径必须 403**、`fetch_bytes` 的超限与 404 处理。
-
-`smoke_attach_e2e.py` 是这条链路的端到端验收（14 项）：自起一个假校内站点（列表页 + 正文页 + 真 docx 附件），跑**真正的 Crawler**，检查附件被下载到 `data/` 下、正文与表格被抽出、只写在附件里的关键词能检索回该通知、`dry_run` 的最终 Prompt 里确实带上了附件正文、卡片层标出「已解析」并带 `attachment_id`。
-
-`smoke_settings_ui.py` 的假 DOM 里补了「附件与 OCR」分页：切页会拉配置、select 按服务端状态回填、AK/SK 只回显掩码、不填 key 保存要红、填了要绿且请求体里两个 key 都在、清除凭据与切回模型分页。前端脚本拼在同一个 `<script>` 里，只有把整页 JS 实跑一遍才能发现这类「接口字段对不上」的问题。
-
----
-
-## 它是怎么跑的
-
-```
-L0 种子层   scau_bio_seed.yaml (349 条白名单) ──curate──▶ 42/165/349 个栏目
-                                  │
-L1 采集层   列表页 list.htm → 读「尾页」得 max_page → 抓前 N 页
-            → 按 a{ID} 去重 → 按标题相关度+日期排序 → 抓正文
-                                  │
-L2 解析层   URL 归一化（真实域名强制 https，本机地址保持原协议） · 中文日期解析
-            · 正文清洗 · 附件链接
-                                  │
-L2.5 附件层  附件下载到 data/attachments/<年>/<月>/（按内容哈希去重）
-            → 文档解析（pdftext / OOXML / OLE2-Word / BIFF8 / zip 递归）
-            → 图片与扫描件走 OCR（百度，可关）→ 附件正文单独建 FTS
-                                  │
-L3 存储层   SQLite + FTS5（中文 bigram 分词；article 与 attachment 各一张 FTS 表）
-                                  │
-L4 检索层   OR 召回候选 → Python 侧按「词覆盖度 + BM25 + 学院加权」重排
-            → 附件正文命中时把其所属通知顶上（正文里往往只有「详见附件」）
-                                  │
-L5 编排层   意图分解 → 站内+公网检索 → 缺口检测 → 补检索(≤2轮) → 证据聚合
-                                  │
-L6 输出层   分路线答案 + 逐条 [n] 引用 + 时效标注 + 「本次未能证实」清单
-                                   │
-L7 卡片层   证据 → 活动/赛事卡（带综测·推免分值 + 报名截止）· 附件卡 · 关键时间卡
-            （确定性抽取 + 与已核验名录匹配，不调模型；匹配不上就如实标注）
-            附件卡带解析结果（已解析 N 字 / N 张表 / OCR N 张）· 可看抽出的正文
-            · 可打开 data/attachments/ 里的本地副本
-            →「＋ 添加到活动篮」写进计算器同一份状态
-```
-
-### 目录结构
+## 目录结构
 
 ```
 SCAU-Wayfinder-Agent/
-├─ harness/                     Python 包（全部实现）
-│  ├─ config.py     配置与 .env 加载（密钥优先级：环境变量 > .env；含设置面板的读写函数）
-│  ├─ seed.py       解析 seed/scau_bio_seed.yaml（自写的 flow-mapping 解析器）
-│  ├─ curate.py     按问题意图裁剪栏目清单（narrow / p1 / p2）
-│  ├─ fetcher.py    urllib 抓取：https 归一化 / 编码探测 / 限速 / 重试 / robots
-│  ├─ auth.py       ★ 登录墙：CAS 表单登录 / Cookie 导入 / **验证码 OCR 自动过** /
-│  │                  凭据落盘（.auth/）· 撞到登录墙时自动登录
-│  ├─ parse.py      Webplus 列表页与正文页解析（不烧 token 的抽取）
-│  ├─ pdftext.py    ★ 纯标准库 PDF 文本抽取（xref/对象流/ToUnicode/变换链，见下文）
-│  ├─ docparse.py   ★ 办公文件解析：docx/xlsx/pptx/pdf/doc/xls/rtf/zip/图片
-│  ├─ ocr.py        ★ OCR 层：百度智能云（可配）+ 未配置时安全降级 + 图片预处理
-│  ├─ attachments.py ★ 附件层：下载到 data/attachments/、解析、入库、限额与去重
-│  ├─ store.py      SQLite + FTS5 + 中文 bigram 分词 + 两段式检索（article/attachment 两张 FTS）
-│  ├─ llm.py        OpenAI 兼容 LLM 客户端（默认 DeepSeek；chat + stream 两条路）
-│  ├─ websearch.py  公网搜索（ddg / bocha / tavily / bing）
-│  ├─ prompts.py    全部 Prompt 模板（= harness 的系统提示词），改这里就能改回答口径
-│  ├─ agent.py      编排：分解 → 检索 → 缺口 → 补检索 → 流式生成 → 卡片装配 → 引用来源
-│  ├─ cards.py      对话卡片：活动/赛事（带综测·推免分值）· 附件 · 关键时间；不调模型
-│  ├─ maint.py      语料体检、清理、重抓
-│  ├─ cli.py        命令行入口
-│  ├─ app.py        单页应用装配：外壳 + 对话视图（流式正文 + 右侧「引用来源」栏 + 卡片）+ 计算器视图
-│  ├─ appshell.py   左侧栏外壳：视图路由、侧栏开合、⚙️ 设置弹窗、卡片样式、轻提示
-│  ├─ web.py        Web 服务（标准库 http.server + SSE 流式输出 + 各 API）
-│  ├─ calcpages.py  计算器视图（四个子页的标记与脚本，交给 app.py 装配）
-│  ├─ test_cards_api.py  卡片链路自测（自造库 + 真 http.server + SSE 断言，不调模型）
-│  ├─ test_app_shell.py  单页应用装配自测（含右栏结构 / 提示词口径 / node --check）
-│  ├─ test_stream.py     流式生成自测（假 OpenAI 端点，含思维链截断与不支持 stream 的退路）
-│  ├─ crawl.py / crawler.py   采集入口与调度
-│  └─ calc/         绩点 / 综测计算器（零依赖，只读 calcdata/*.json）
-│     ├─ model.py        数据模型（培养方案、规则、门槛、活动）
-│     ├─ loader.py       读 JSON 并做一致性校验（含双评分表口径检查）
-│     ├─ grade.py        绩点换算、平均学分绩点、目标分反推
-│     ├─ metrics.py      只读推算值（四六级、体测、推免折算分…）
-│     ├─ basket.py       活动篮：选活动 → 各通道加分
-│     ├─ comprehensive.py 综测五分项合成（含加分上限截断）
-│     ├─ competitions.py 《学生竞赛奖励办法》名录 → 具体赛事 Activity
-│     ├─ online.py       活动篮「刷新联网」：抓官网 → 对账 → 缓存（不调模型）
-│     ├─ goals.py        门槛判定 + 课程目标分摊
-│     └─ engine.py       Facade：一次调用算完全部结果
-├─ seed/
-│  └─ scau_bio_seed.yaml        机器可读种子（10 分组 / 349 栏目）
-├─ calcdata/                    ★ 计算器的全部数值（进 git；改这里就改算法口径）
-│  ├─ rules.json       绩点折算表、综测分项与加分上限、路由、系数
-│  ├─ majors.json      生物技术 / 生物科学培养方案与课程
-│  ├─ goals.json       保研 / 考研 / 奖学金门槛
-│  ├─ activities.json  通用加分项清单（综测/推免两套分值）
-│  └─ competitions.json 《学生竞赛奖励办法》110 个具体赛事 + 加分档位模板
-├─ data/                        运行期数据（整个目录已在 .gitignore 中，不入库）
-│  ├─ crawler.db               SQLite 语料库
-│  ├─ attachments/<年>/<月>/   ★ 下载的附件与图片（内容哈希去重，项目内固定位置）
-│  └─ research/                调研取证产物（脚本 / 原文 / 提取文本）
-│     ├─ build_competitions.py     从名录页文本生成 calcdata/competitions.json
-│     ├─ smoke_attach.py           附件解析与 OCR 离线自测（60 项）
-│     ├─ smoke_attach_e2e.py       附件管道端到端（假站点 + 真 Crawler，14 项）
-│     ├─ make_xls_fixture.py       自造 OLE2+BIFF8 的 .xls 样本（不需要 Excel）
-│     ├─ smoke_cards.py            对话卡片离线自测（清洗 / 匹配 / 时间 / 附件 / 入篮口径）
-│     └─ sfs_c20310a447244.txt     名录页正文（内置数据的取证副本）
-├─ docs/                        设计与侦察文档（见文末）
-├─ Launch.cmd                   Windows 双击即开 Web 界面
-├─ data/crawler.db              语料库（不入 git）
-├─ data/cache/calc_competitions.json  联网刷新的结果缓存（不入 git）
-└─ .env                         密钥（不入 git）
+├─ wayfinder/                 后端包（详见 wayfinder/README.md）
+│  ├─ app.py                  组装根：服务容器 + 路由 + Web 启动
+│  ├─ services.py             Services：按配置提供 Store/Calculator/LLM/Agent
+│  ├─ main.py                 入口：只分发到 CLI / app
+│  ├─ cli.py                  命令行入口
+│  ├─ core/                   配置、路径、.env 读写
+│  ├─ crawl/                  种子、抓取、解析、登录、维护
+│  ├─ corpus/                 SQLite 存储与中文检索
+│  ├─ documents/              附件下载、办公文件解析、PDF、OCR
+│  ├─ qa/                     LLM 客户端、Prompt、Agent、卡片、公网搜索
+│  ├─ calc/                   绩点 / 综测 / 门槛计算引擎（只读本地数据）
+│  ├─ integrations/           赛事名录联网刷新（会联网、写缓存）
+│  ├─ settings/               设置用例、校验、落盘、登录动作
+│  ├─ api/                    JSON / SSE 薄适配层
+│  └─ server/                 HTTP 传输层
+├─ frontend/                  纯静态前端（ES Modules，无构建步骤）
+│  ├─ index.html
+│  ├─ css/                    shell / calc 两份作用域样式
+│  └─ js/
+│     ├─ main.js              模块装配入口
+│     ├─ router.js            路由与视图切换
+│     ├─ shared/              dom / api / events / format / toast
+│     └─ features/            chat / calc / settings
+├─ tests/                     离线自测（见 tests/README.md）
+├─ calcdata/                  计算器数据（进 git）
+├─ seed/                      栏目种子白名单
+├─ docs/                      设计与资料（见 docs/README.md）
+└─ data/                      运行时数据（内容不进 git：库、附件、缓存）
 ```
 
-
-
----
-
-##不足
-
-- **只适配生命科学学院的两个专业**（生物技术、生物科学），且综测/推免细则用的是生科院版本。各学院口径差异很大，直接套到别的学院会算错。
-- **逐门课程的学分仍是规划用的估算值。** 毕业总学分（生物技术 160、生物科学 155）、学位信息、绩点折算、综测与推免的加分表都核到了官方原文；但课程级的学分是按公开课程信息整理的，请用教务系统里本人的培养方案核对。`confidence` 字段标了哪些是 `verified`、哪些不是。
-- **绩点折算已按官方原文核定。** 华南农办〔2021〕68号 第十二条（一）＝华南农办〔2010〕88号 第八条（一）：100 分 = 5.00 绩点、每 1 分 0.10 绩点、低于 60 分 = 0 绩点，即 `绩点 = 分数 ÷ 10 − 5`（60 分 = 1.00、80 分 = 3.00、90 分 = 4.00）。`harness/calc/loader.py` 每次装载都会对 60–100 分逐分核对这张表，不一致会报警告。**如果你的教务系统显示的不是这个，先确认看的是不是另一个口径（例如综测智育用的「不含重修」那个），再改 `calcdata/rules.json` 的 `gpa.bands`。**
-- **「绩点」不是唯一一个数，要看用途。** 学籍/毕业/推免用含重修且封顶 1.00 的平均学分绩点；综测评优的智育基础分用不含重修的（华农党发〔2020〕38号 第六条（一））。本工具两个都算、分开显示。**注意各学院推免的学业成绩折算公式并不统一**（生科院是「个人绩点 ÷ 同班型最高绩点 × 85」，数学与信息学院是「GPA ÷ 5.0 × 85」），算出来的分不能跨学院比较。
-- **推免的学业成绩折算公式按生科院口径**（个人绩点 ÷ 同班型最高绩点 × 85），需要学生自己填「同班型最高绩点」才算得准；不填会退回按加权平均分显示并标记为下界估计。
-- **综测各分项的「基础分」需要手填**（德育基础分+互评分、体育基础分、美育/劳育基础分），因为这些来自班级评议与辅导员评价，不在任何可查的数据里。不填则按细则的常见值预置并标注。
-- **活动清单是「能查到出处的」而非穷举。** `activities.json` 的 41 项覆盖了细则里所有明确的加分条目；`competitions.json` 另有《学生竞赛奖励办法》名录里的 110 个具体赛事（T 84 / A 16 / B 10），名录外的比赛（例如「丁颖杯」这类校内赛事）要靠「活动篮」页的「🔄 刷新联网」从通知栏目里发现线索，或按同样格式自己加。学院每年会出新活动，需要时按 JSON 格式加一条即可。
-- **门槛的参考线是经验值。** 细则只写满分不写最低要求的地方（如「创新能力 10 分」），工具给的是「有竞争力」的参考线，标注为 `adjustable`，不是明文规定。
-- **对话卡片是「抽出来的」，不是「读懂的」。** 活动名靠通知标题切、时间靠「标签后面的第一个日期」、附件靠链接后缀，都是确定性规则：标题起得怪的会切歪（卡片上显示的是切出来的名字，匹配不上名录时会写明），正文用「另行通知」「时间待定」的抽不到时间。附件里的内容**已经会解析**（见上文「附件与图片解析」），卡片上会给出解析结果与入口；少数畸形文件解析不出正文时，卡片会如实写「解析失败/只扫到部分文本」，不会假装读到了。**卡片里唯一敢保证的是：分值来自已核验的 `calcdata`，匹配不上就不给分值。**
+每个功能目录下都有独立的 `README.md`，说明职责、关键文件与扩展方式。
 
 ---
 
-## 排错
-
-| 症状 | 原因与解法 |
-|---|---|
-| `尚未配置 LLM API key` | 跑 `python -m harness.cli setup-key`，或在 Web 界面点左下「⚙️ 模型设置」 |
-| `HTTP 401 Authentication Fails` | key 错了或失效了，重新填一次（设置面板的「测试连接」能当场验出来） |
-| 设置保存了却不生效 | 系统环境变量里有同名的 `LLM_API_KEY` / `DEEPSEEK_API_KEY`，优先级高于 `.env`；设置面板和 `cli doctor` 都会提示是哪几个（本次运行仍会生效，重启后被环境变量盖回） |
-| 设置面板提示「只能看不能改」 | 页面不是从本机（127.0.0.1）打开的，改用本机地址访问 |
-| 检索没有命中 | 先 `harness.cli search "短词"` 确认库里有；关键词用 2-6 字，别用整句 |
-| 附件没被下载 | 附件在 `crawl` 时抓；被 `--no-attachments` 跳过时可单独补：`harness.cli attach --all` |
-| 附件解析出 0 字 | 看卡片上的 note：可能是扫描件（要配 OCR）、加密 PDF、或 rar/7z（需先手动解压）。用 `harness.cli parse <文件>` 单文件复现 |
-| OCR 没生效 | `harness.cli ocr` 看状态：百度要同时填 AK 与 SK，且应用开通「通用文字识别」；`--test` 会真调一次 |
-| 图片里的字仍抽不到 | 只有文档里**已有**的内嵌图片会走 OCR（本版不把扫描页渲染成图片）；免费额度用尽会返回错误码 17 |
-| 附件目录越来越大 | 附件默认存 `data/attachments/`，占用见 `harness.cli doctor`；删掉该目录只影响「本地副本」链接，随时可 `attach --all` 重抓 |
-| 库内文章数为 0 | 还没抓，跑 `crawl --scope narrow` |
-| 某栏目 0 篇 | 可能是空栏目（正常），也可能模板不同；用 `--url` 单独抓一次看日志 |
-| 答案里有 `⚠️可能已过期` | 该证据发布时间超过 18 个月，属预期行为 |
-| 端口被占用 | `harness.cli web --port 8849` |
-
-抓取失败会写进 `crawl_log` 表，按 `http_error / empty / robots_disallow / list_unreachable / parse_fail` 分类归因。查最近的失败：
+## 常用命令
 
 ```powershell
-python -c "import sqlite3;d=sqlite3.connect(r'data\crawler.db');d.row_factory=sqlite3.Row;[print(r['status'],r['error'],r['url']) for r in d.execute('SELECT status,error,url FROM crawl_log WHERE status!=\"ok\" ORDER BY id DESC LIMIT 30')]"
+python -m wayfinder doctor                     # 自检：种子/库/计算器/LLM/OCR/登录
+python -m wayfinder crawl --scope narrow       # 抓 42 个高信号栏目
+python -m wayfinder crawl --scope p1           # 165 个栏目
+python -m wayfinder search "挑战杯"             # 只检索，不花 token
+python -m wayfinder ask "生物专业可以参加什么竞赛？"
+python -m wayfinder ask "保研条件" --dry-run    # 只检索，打印证据与 Prompt
+python -m wayfinder web --port 8848 --no-open  # 不自动开浏览器
+
+python -m wayfinder calc                       # 计算器数据自检
+python -m wayfinder gpa --score C3001=88
+python -m wayfinder goals --scores my.json --cohort 120 --rank 18
+python -m wayfinder activities --list competition
+
+python -m wayfinder parse 报名表.xlsx 评审细则.pdf
+python -m wayfinder attach --limit 20
+python -m wayfinder attachments --search 报名截止
+python -m wayfinder ocr --api-key <AK> --secret-key <SK>
+python -m wayfinder login                      # 统一身份认证
+```
+
+完整参数：`python -m wayfinder <命令> --help`。
+
+---
+
+## HTTP 接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/status` | 库状态 + 模型 / 搜索 / OCR 配置灯 |
+| GET | `/api/search?q=&k=` | 纯检索（不花 token） |
+| GET | `/api/article?id=` | 读一篇正文 |
+| GET | `/api/ask?q=&rounds=&dry=` | SSE 问答流 |
+| GET | `/api/attachment?id=` | 附件解析结果 |
+| GET | `/api/attachment/file?stored=` | 本地附件文件（仅限附件目录） |
+| GET | `/api/calc/catalog` | 计算器全部静态数据 |
+| POST | `/api/calc/evaluate` | 成绩单 + 活动篮 → 完整结果 |
+| GET | `/api/calc/target?gpa=&major=&scores=` | 课程目标分反推 |
+| POST | `/api/calc/activities/refresh` | 联网刷新赛事名录 |
+| GET/POST | `/api/settings/llm` | 模型设置 / 保存 |
+| POST | `/api/settings/llm/test` | 测试连通性 |
+| GET/POST | `/api/settings/ocr` | OCR 设置 / 保存 |
+| POST | `/api/settings/ocr/test`・`/clear` | 测试 / 清除 |
+| GET/POST | `/api/settings/auth` | 登录设置 / 保存并登录 |
+| POST | `/api/settings/auth/captcha`・`/clear`・`/logout` | 人工验证码 / 清凭据 / 退出 |
+
+`/api/ask` 的 SSE 事件：`trace({step,data})` → （`answer_delta` → `answer_end`）* →
+`answer` → `cards` → `done`。`trace` 只推结构化步骤，中文文案由前端 `traceText()` 生成；
+`dry=1` 时 `answer` 带 `dry/evidence_count`，正文摘要在前端组装。
+错误一律放在 `answer` 事件的 `error` 字段（事件名不能用 `error`，否则 EventSource 会当连接故障）。
+
+静态资源：`/` 与 `/calc*` 返回 `frontend/index.html`；`/assets/**` 返回 `frontend/**`。
+
+---
+
+## 测试
+
+全部离线（假站点 / 假 OpenAI 端点），不联网、不花 token：
+
+```powershell
+python tests/test_architecture.py # 依赖方向、组装根、前端职责边界
+python tests/test_app_shell.py    # ES Module 装配、作用域样式、node 解析
+python tests/test_api_smoke.py    # 全部只读接口 + evaluate + SSE + 404/403
+python tests/test_cards_api.py    # 真起 HTTP 服务，验 /api/ask 的 SSE cards 事件
+python tests/test_stream.py       # 流式增量 / 思维链截断 / 端点不支持 stream 的退路
+python tests/test_auth.py         # CAS 登录、验证码、Cookie、采集自动登录、设置面板
 ```
 
 ---
 
-## 后续更新
+## 配置与数据
 
-1. **扩到更多学院和专业。** 现在能搜的主要是生物相关方向，其他学院的通知要跑 `--scope p1` / `all` 才慢慢补上。目标是让每个专业都能问自己的问题。计算器同理，目前只适配生物技术、生物科学两个专业，加专业只需往 `calcdata/majors.json` 追加一项。
-2. **把逐门课程的学分换成官方培养方案。** 计算器的毕业总学分和学位信息已核验，但课程级的学分仍是按公开课程信息整理的规划表。拿到各专业培养方案的完整课程表后替换即可（`calcdata/majors.json`）。
-3. **补齐其他学院的综测/推免细则。** 各学院口径差异很大（学业成绩折算公式、加分表、封顶值都不同），目前只做了生命科学学院。数据格式已经支持按通道配置不同口径，加学院不用改代码。
-4. ~~**解析附件正文。**~~ **已完成**（见上文「附件与图片解析」）：PDF / doc / docx / xls / xlsx / ppt / pptx / 压缩包 / 图片全部本机解析，附件下载到 `data/attachments/`，正文进检索与证据链；图片与扫描件走可配置的 OCR。下一步可以做的：把**扫描页 PDF 渲染成图片**再 OCR（现在只处理文档里已有的内嵌图片）、离线 Tesseract 作为无 key 的备选、以及把附件里的表格（加分表、名额表）结构化进 `calcdata`。
-5. **结构化字段。** 对疑似竞赛通知做 LLM 抽取（`is_competition / level / signup_deadline / eligible`），落进 `field` 表，之后就能直接回答「最近能报名的国家级竞赛有哪些」，也能自动更新活动清单。附件正文已经进证据，这一条现在更容易做了。
-6. **定时增量。** 用 Windows 计划任务每天凌晨跑一次 `crawl`（现在会连附件一起抓，注意 `ATTACH_MAX_MB` / 附件目录占用），现在还得手动重跑。
-7. **评估集。** 用固定的验收问题量化引用准确率和幻觉率，改动 Prompt 之后能看出有没有变差。
-8. **向量检索。** 同义表达（「推免」vs「保研」）现在靠 bigram 近似覆盖，数据量大了以后加 embedding 做混合检索。
+- `.env`：模型 / 搜索 / OCR / 登录开关。复制 `.env.example` 后按需填写；界面保存也写这里。
+- `.auth/`：Cookie 与（可选的）账号密码，已 gitignore，**不进日志、不发模型**。
+- `calcdata/`：计算器全部学校数据，进 git；改数据不用改代码。
+- `data/`：SQLite 库、附件、缓存，进 gitignore；可整体删除后重建。
+- 环境变量前缀：`WAYFINDER_*`（兼容旧的 `HARNESS_*`）。
 
----
-
-## 相关文档
-
-| 文件 | 说明 |
-|---|---|
-| [docs/SCAU-LLM-Harness-开发指南.md](docs/SCAU-LLM-Harness-开发指南.md) | 原始开发指南（架构、里程碑、坑清单） |
-| [docs/web.md](docs/web.md) | SCAU 全站群清单（4118 行，人工核验） |
-| [seed/scau_bio_seed.yaml](seed/scau_bio_seed.yaml) | 机器可读种子（10 分组 / 349 栏目） |
-| [calcdata/](calcdata/) | 计算器数据：规则 / 培养方案 / 门槛 / 通用加分项 / 具体赛事名录 |
-| [docs/groupA_recon.md](docs/groupA_recon.md) | 5 个学院的深度侦察报告 |
-| [docs/crawl4ai-api-reference-0.9.4.md](docs/crawl4ai-api-reference-0.9.4.md) | crawl4ai 0.9.4 API 速查（要接回浏览器方案时看） |
+> 计算器数值是规划用的，不是学籍依据。请用本学院当年细则与教务系统培养方案核对。
 
 ---
 
-## 计算器数据来源
+## 延伸阅读
 
-`calcdata/` 的数值不是凭印象填的，主要核对了这些官方文件（每个数据点的 `source` 里都写了条款号）：
-
-| 文件 | 用到了什么 |
-|---|---|
-| 《华南农业大学本科学生学籍管理实施细则》华南农办〔2021〕68号 | 绩点折算表（第十二条（一）：100 分=5.00 绩点、每 1 分 0.10 绩点、低于 60 分=0，即 `分数 ÷ 10 − 5`）、平均学分绩点公式、补考/重修及格后折合 1.00 绩点 |
-| 《华南农业大学本科学生学分制实施细则》华南农办〔2010〕88号 | 与学籍细则同文的绩点折算与平均绩点公式（交叉印证：第八条） |
-| 《华南农业大学本科课程考核管理规定》华南农办〔2021〕64号 | 补考/重修及格后折合 1.00 绩点 |
-| 《华南农业大学本科生综合测评及评优实施办法》华农党发〔2020〕38号 | 第六条（一）「重修课程成绩不纳入平均绩点计算范围」（综测评优口径的绩点）；第十一条（四）综合奖学金平均绩点 ≥ 3.00 |
-| 生命科学学院《2025-2026 学年本科生综合测评及评优工作的通知》 | 「智育基础分……不含重修课程及第二学位成绩的平均绩点」——智育基础分实际用的口径 |
-| 《华南农业大学本科生选课管理规定》华南农办〔2016〕158号 等 | 「已选课程均参与学分绩点计算」 |
-| 《生命科学学院本科生综合测评及评优实施细则（2026年修订）》华南农生科党发〔2026〕4号 | 综测五分项、全部加分表与上限、奖学金比例与金额 |
-| 《生命科学学院推免综合评价细则（2026年修订）》 | 学业成绩 85 / 创新能力 10 / 发展素养 5 的逐档分值 |
-| 《华南农业大学推荐优秀应届本科毕业生免试攻读研究生实施办法（2025年修订）》华南农办〔2025〕32号 | 推免硬门槛（GPA≥3.20、前 50%、四级 425、体测通过、无违纪） |
-| 《华南农业大学贯彻落实〈高等学校体育工作基本标准〉的实施方案》华南农办〔2020〕85号 | 体测 ≥80 方可评优评奖、<50 按结业处理 |
-| 《华南农业大学创新创业学分认定暂行办法》华南农办〔2013〕2号 | 必须取得 3 个创新创业学分方准予毕业 |
-| 《华南农业大学学士学位授予工作细则》华南农办〔2025〕36号 | 现行学位条件（已无 GPA 门槛） |
-| 《华南农业大学学生竞赛奖励办法》华南农办〔2022〕38号 及其附件《规定的学科竞赛名录》 | `competitions.json` 的 110 个具体赛事（T 84 / A 16 / B 10）与 T/A/B 级别界定；名录页：<https://sfs.scau.edu.cn/2026/0926/c20310a447244/page.htm> |
+- [后端分层与依赖方向](wayfinder/README.md)
+- 领域：[采集](wayfinder/crawl/README.md) · [存储检索](wayfinder/corpus/README.md) · [文档解析](wayfinder/documents/README.md) · [问答编排](wayfinder/qa/README.md) · [计算引擎](wayfinder/calc/README.md) · [设置服务](wayfinder/settings/README.md)
+- 接口与传输：[API 层](wayfinder/api/README.md) · [HTTP 传输层](wayfinder/server/README.md) · [配置](wayfinder/core/README.md)
+- 其它：[前端](frontend/README.md) · [测试](tests/README.md) · [计算器数据](calcdata/README.md) · [种子](seed/README.md) · [文档资料](docs/README.md)
 
 ---
 
 ## License
 
-[MIT](LICENSE) © 2026 FlyingBlock
+见 [LICENSE](LICENSE)。

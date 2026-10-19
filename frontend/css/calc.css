@@ -1,0 +1,87 @@
+/* 计算器视图样式：只作用于 #view-calc */
+#view-calc *{box-sizing:border-box}
+#view-calc header h1{font-size:16.5px;margin:0;font-weight:650}
+#view-calc .tabs{display:flex;gap:6px;padding:8px 16px;background:var(--bg);border:1px solid var(--bd);
+        border-radius:10px;margin-bottom:14px;flex-wrap:wrap}
+#view-calc .tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:7px 13px;
+               font:inherit;font-weight:600;color:var(--mut);cursor:pointer}
+#view-calc .tabs button.on{color:var(--acc);border-bottom-color:var(--acc)}
+#view-calc .wrap{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;align-items:start}
+@media (max-width:1100px){
+#view-calc .wrap{grid-template-columns:1fr}
+}
+#view-calc .card{background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:14px}
+#view-calc .card h2{font-size:15px;margin:0 0 12px;font-weight:650;display:flex;align-items:center;gap:8px}
+#view-calc .card h2 .sub{font-weight:400;font-size:12.5px;color:var(--mut)}
+#view-calc select, #view-calc input[type=number], #view-calc input[type=text]{padding:6px 8px;border:1px solid var(--bd);
+        border-radius:6px;font:inherit;background:var(--bg);color:var(--fg)}
+#view-calc input[type=number]{width:78px}
+#view-calc button{background:var(--acc);color:#fff;border:0;border-radius:7px;padding:7px 14px;
+         font:inherit;font-weight:600;cursor:pointer}
+#view-calc button.ghost{background:var(--bg);color:var(--fg);border:1px solid var(--bd);font-weight:500}
+#view-calc button.mini{padding:3px 9px;font-size:12.5px;border-radius:6px}
+#view-calc button:hover{filter:brightness(.96)}
+#view-calc .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#view-calc .grid{display:grid;gap:10px 14px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+#view-calc .fld{display:flex;flex-direction:column;gap:3px}
+#view-calc .fld label{font-size:12.5px;color:var(--mut)}
+#view-calc .fld input, #view-calc .fld select{width:100%}
+#view-calc table{border-collapse:collapse;width:100%;font-size:13.5px}
+#view-calc th, #view-calc td{border-bottom:1px solid var(--bd);padding:6px 8px;text-align:left;vertical-align:middle}
+#view-calc th{background:var(--soft);font-weight:600;font-size:12.5px;color:var(--mut);
+     position:sticky;top:0;z-index:1}
+#view-calc td.num, #view-calc th.num{text-align:right}
+#view-calc .scroll{max-height:460px;overflow:auto;border:1px solid var(--bd);border-radius:8px}
+#view-calc .termchip{display:inline-block;font-size:12px;padding:1px 7px;border-radius:99px;
+            background:var(--soft);border:1px solid var(--bd);color:var(--mut)}
+#view-calc .ach{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+#view-calc .chip{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--bd);
+        background:var(--soft);color:var(--mut)}
+#view-calc .chip.on{background:#eaf1fd;border-color:#b6cffa;color:var(--acc);font-weight:600}
+#view-calc .act{border:1px solid var(--bd);border-radius:9px;padding:11px 13px;margin-bottom:9px;background:var(--bg)}
+#view-calc .act .t{font-weight:600;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+#view-calc .act .m{font-size:12.5px;color:var(--mut);margin-top:3px}
+#view-calc .act .meta{font-size:12.5px;color:#424a53;margin-top:4px}
+#view-calc .pts{font-family:ui-monospace,Consolas,monospace;color:var(--ok);font-weight:600}
+#view-calc .pts.zero{color:var(--mut);font-weight:400}
+#view-calc .basis{font-size:12px;color:var(--mut);margin-top:4px;border-left:3px solid var(--bd);padding-left:8px}
+#view-calc /* 具体赛事卡片：左侧色条区分「名录内置」与「联网新增」 */
+  .act.comp{border-left:3px solid var(--acc)}
+#view-calc .act.comp.online{border-left-color:var(--pri)}
+#view-calc .seq{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:20px;
+       padding:0 5px;border-radius:5px;background:var(--soft);border:1px solid var(--bd);
+       font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--mut)}
+#view-calc .tier{font-weight:700;font-size:11.5px;padding:1px 8px;border-radius:99px;border:1px solid var(--bd)}
+#view-calc .tier.T{color:var(--err);border-color:#f3c0c0;background:var(--errbg)}
+#view-calc .tier.A{color:var(--warn);border-color:#eeddaa;background:var(--warnbg)}
+#view-calc .tier.B{color:var(--ok);border-color:#b7e0c2;background:var(--okbg)}
+#view-calc .clue{border:1px solid var(--bd);border-radius:8px;padding:7px 10px;margin-bottom:6px;background:var(--bg)}
+#view-calc .clue .ct{font-weight:600;font-size:13px}
+#view-calc .clue .cm{font-size:12px;color:var(--mut);margin-top:2px}
+#view-calc .ok-line{font-size:12.5px;color:var(--ok)}
+#view-calc .err-line{font-size:12.5px;color:var(--err)}
+#view-calc .diffitem{font-size:12.5px;margin-top:4px}
+#view-calc .basket{position:sticky;top:16px}
+#view-calc .bl{display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:13px}
+#view-calc .bl .n{flex:1;min-width:0}
+#view-calc .bl .n b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-calc .bl .n span{font-size:12px;color:var(--mut)}
+#view-calc .tot{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--bd)}
+#view-calc .tot b{font-family:ui-monospace,Consolas,monospace}
+#view-calc .tot.big{font-size:16px;font-weight:700;border-bottom:0;padding-top:9px}
+#view-calc .note{font-size:12.5px;color:var(--mut);background:var(--soft);border:1px solid var(--bd);
+        border-radius:8px;padding:9px 11px;margin-top:10px}
+#view-calc .checks{width:100%;font-size:13px}
+#view-calc .checks td{padding:5px 7px}
+#view-calc .st{font-weight:600}
+#view-calc .st.ok{color:var(--ok)}
+#view-calc .st.no{color:var(--err)}
+#view-calc .st.unk{color:var(--warn)}
+#view-calc .bar{height:7px;background:var(--soft);border-radius:99px;overflow:hidden;border:1px solid var(--bd);margin-top:5px}
+#view-calc .bar i{display:block;height:100%;background:var(--acc)}
+#view-calc .hide{display:none!important}
+#view-calc details summary{cursor:pointer;color:var(--mut);font-size:13px}
+#view-calc .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--bd);
+        border-top-color:var(--acc);border-radius:50%;animation:r .8s linear infinite;vertical-align:-1px}
+@keyframes r{to{transform:rotate(360deg)}}
+#view-calc .src{font-size:11.5px;color:#8b949e;word-break:break-all}
