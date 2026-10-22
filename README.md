@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/scau.jpg" width="800" alt="项目头图">
+</p>
+
 # SCAU Wayfinder
 
 华南农业大学校内公开信息检索 + 学业规划助手。
