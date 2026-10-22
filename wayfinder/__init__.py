@@ -5,4 +5,4 @@
 main.py / cli.py 只做入口分发，命令实现在 commands/。
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

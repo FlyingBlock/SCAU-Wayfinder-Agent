@@ -36,3 +36,6 @@ venv/
 # 导出的问答结果
 out/
 *.answer.json
+
+# 本地更新日志（不随仓库发布）
+CHANGELOG.md

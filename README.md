@@ -5,7 +5,7 @@
 # SCAU Wayfinder
 
 这是一个公开信息检索 + 学业规划助手。
-搭配作者正在做的一个学校各官网信息轮询工具食用效果更佳
+搭配作者正在做的一个学校各官网信息轮询工具食用效果更佳。
 
 ## 它能做什么
 
@@ -48,41 +48,6 @@ python -m wayfinder setup-key
 
 ---
 
-## 架构
-
-前后端通过 HTTP / SSE 通信，依赖方向如下：
-
-```
-frontend/  (纯静态 HTML/CSS/ES Modules)
-    │  main.js 只装配；features/* 只做界面组织、用户事件、订阅 JSON / SSE
-    ▼  HTTP + SSE
-wayfinder/server/http.py     传输层：socket、静态资源、SSE 帧
-    ▼
-wayfinder/protocol/http.py   共享协议原语：Request / Response / Router
-    ▲
-wayfinder/api/*              协议层：参数解析 → 用例调用 → JSON / SSE
-    ▼
-wayfinder/services.py        服务容器 → 领域层：crawl / corpus / documents / qa / calc / settings
-    ▲
-wayfinder/app.py             组装根：build_services → build_router → run_web
-wayfinder/main.py            入口：只把命令交给 cli
-wayfinder/cli.py             只建 parser、分发到 commands/
-wayfinder/commands/*         按功能拆开的 CLI 适配层
-```
-
-三条硬约束：
-
-1. **前端不计算业务结果**：分数、绩点、最佳成就、活动筛选/排序全部由后端
-   返回；前端只渲染与订阅。GPA 列读 `effective_gp`，活动卡读 `best`，
-   活动列表读 `/api/calc/activities`，通道口径读 catalog。
-2. **后端不拼界面**：Python 里不出现 HTML/CSS/JS；SSE 的 `trace` 只推
-   `{step, data}`，已知错误推 `{code}`，中文步骤、文案、按钮和布局由
-   `frontend/` 负责。设置接口的“操作摘要”字段仍是协议数据，前端只负责展示。
-3. **主程序只组装**：`wayfinder/app.py` 创建服务、装配路由、启动传输层；
-   `wayfinder/main.py` 只做入口分发；`wayfinder/cli.py` 只建 parser 和 dispatch；
-   业务命令在 `wayfinder/commands/`，领域逻辑在子包。
-
----
 
 ## 目录结构
 
@@ -124,7 +89,7 @@ SCAU-Wayfinder-Agent/
 
 ---
 
-## 常用命令
+## 常用命令（用GUI交互即可）
 
 ```powershell
 python -m wayfinder doctor                     # 自检：种子/库/计算器/LLM/OCR/登录
@@ -218,6 +183,7 @@ python tests/test_auth.py         # CAS 登录、验证码、Cookie、采集自�
 
 ## 延伸阅读
 
+- [更新日志](CHANGELOG.md)：各版本变更记录
 - [后端分层与依赖方向](wayfinder/README.md)
 - 功能索引：[功能一览](docs/FEATURES.md)
 - 领域：[采集](wayfinder/crawl/README.md) · [存储检索](wayfinder/corpus/README.md) · [文档解析](wayfinder/documents/README.md) · [问答编排](wayfinder/qa/README.md) · [计算引擎](wayfinder/calc/README.md) · [设置服务](wayfinder/settings/README.md)
