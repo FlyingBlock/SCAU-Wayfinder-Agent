@@ -53,6 +53,10 @@ def save_llm(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
     effective_key = api_key or current.api_key
     effective_base = base_url.rstrip("/") or current.base_url
     effective_model = model or current.model
+    base_changed = effective_base.rstrip("/") != current.base_url.rstrip("/")
+    if verify and base_changed and not api_key:
+        return _bad("修改 base URL 时必须同时提供该端点的 API key，"
+                    "避免把当前 key 发到未验证的地址")
 
     verified, reply, ms = False, "", 0
     if verify:
@@ -135,9 +139,10 @@ def save_ocr(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
     verify = bool(payload.get("verify", True))
     persist = bool(payload.get("persist", True))
 
-    eff_key = api_key or ocr_mod.SETTINGS.api_key
-    eff_secret = secret or ocr_mod.SETTINGS.secret_key
-    eff_provider = provider or ocr_mod.SETTINGS.provider
+    ocr_cfg = svc.settings.ocr
+    eff_key = api_key or ocr_cfg.api_key
+    eff_secret = secret or ocr_cfg.secret_key
+    eff_provider = provider or ocr_cfg.provider
 
     verified, reply = False, ""
     if verify and eff_provider == "baidu":
@@ -146,7 +151,7 @@ def save_ocr(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
         probe = ocr_mod.OCRSettings(
             provider="baidu", api_key=eff_key, secret_key=eff_secret,
             accurate=(bool(accurate) if accurate is not None
-                      else ocr_mod.SETTINGS.accurate))
+                      else ocr_cfg.accurate))
         ok, msg = ocr_mod.health(probe)
         if not ok:
             return {
@@ -160,6 +165,7 @@ def save_ocr(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
     res = service.apply_ocr_settings(
         provider=provider, api_key=api_key or None,
         secret_key=secret or None, accurate=accurate, persist=persist,
+        settings=svc.settings,
     )
     parts = ["已更新 " + "、".join(res["applied"]) if res["applied"]
              else "没有填写新值，配置未改动"]
@@ -179,13 +185,14 @@ def test_ocr(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
         return _forbidden("出于安全考虑，只有从本机（127.0.0.1）打开页面才能测试。")
     raw_key = payload.get("api_key")
     raw_secret = payload.get("secret_key")
-    api_key = (raw_key.strip() if isinstance(raw_key, str) else "") or ocr_mod.SETTINGS.api_key
-    secret = (raw_secret.strip() if isinstance(raw_secret, str) else "") or ocr_mod.SETTINGS.secret_key
+    ocr_cfg = svc.settings.ocr
+    api_key = (raw_key.strip() if isinstance(raw_key, str) else "") or ocr_cfg.api_key
+    secret = (raw_secret.strip() if isinstance(raw_secret, str) else "") or ocr_cfg.secret_key
     accurate = payload.get("accurate")
     probe = ocr_mod.OCRSettings(
         provider="baidu", api_key=api_key, secret_key=secret,
         accurate=(bool(accurate) if accurate is not None
-                  else ocr_mod.SETTINGS.accurate))
+                  else ocr_cfg.accurate))
     if not probe.configured:
         return _bad("还没填 API Key / Secret Key")
     ok, msg = ocr_mod.health(probe)
@@ -196,7 +203,7 @@ def test_ocr(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
 def clear_ocr(local: bool, svc: Services) -> tuple[dict, int]:
     if not local:
         return _forbidden("只有从本机打开页面才能清除凭据。")
-    res = service.clear_ocr_settings()
+    res = service.clear_ocr_settings(settings=svc.settings)
     return service.ocr_state(local, {
         "ok": True, "warning": res["warning"], "message": "已清除 OCR 凭据",
     }, settings=svc.settings), 200
@@ -206,7 +213,7 @@ def clear_ocr(local: bool, svc: Services) -> tuple[dict, int]:
 # 登录
 # --------------------------------------------------------------------------- #
 def get_auth(local: bool, svc: Services) -> dict:
-    return service.auth_state(local)
+    return service.auth_state(local, settings=svc.settings)
 
 
 def save_auth(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
@@ -236,7 +243,7 @@ def save_auth(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
         captcha_rounds=rounds_val,
         service=None if service_url is None else str(service_url),
         captcha_url=None if captcha_url is None else str(captcha_url),
-        persist=persist,
+        persist=persist, settings=svc.settings,
     )
 
     stored_user, stored_pw = auth_mod.load_credentials()
@@ -277,7 +284,8 @@ def save_auth(payload: dict, svc: Services, *, local: bool) -> tuple[dict, int]:
             "message": "；".join(p for p in parts if p) or "设置已保存",
         }), 200
 
-    out = service.do_login(eff_user, eff_pw, auth_mod.SETTINGS.service)
+    out = service.do_login(eff_user, eff_pw, svc.settings.auth.service,
+                           settings=svc.settings)
     if out.get("need_captcha"):
         return service.auth_state(local, {**base, **out}), 200
     if not out.get("ok"):
@@ -307,7 +315,8 @@ def complete_captcha(payload: dict, svc: Services, *, local: bool) -> tuple[dict
     if out.get("error") and not out.get("need_captcha") and not out.get("ok"):
         return service.auth_state(local, out), 400
     message = "验证码登录成功" if out.get("ok") else out.get("error", "登录失败")
-    return service.auth_state(local, {**out, "message": message}), (
+    return service.auth_state(local, {**out, "message": message},
+                              settings=svc.settings), (
         200 if out.get("ok") or out.get("need_captcha") else 400)
 
 
@@ -319,7 +328,7 @@ def clear_auth(local: bool, svc: Services) -> tuple[dict, int]:
                if res["removed"] else "本来就没有保存账号")
     return service.auth_state(local, {
         "ok": True, "removed": res["removed"], "message": message,
-    }), 200
+    }, settings=svc.settings), 200
 
 
 def logout_auth(local: bool, svc: Services) -> tuple[dict, int]:
@@ -330,4 +339,4 @@ def logout_auth(local: bool, svc: Services) -> tuple[dict, int]:
     sess.clear()
     return service.auth_state(local, {
         "ok": True, "message": f"已清除会话（{n} 个 cookie），账号密码保留",
-    }), 200
+    }, settings=svc.settings), 200

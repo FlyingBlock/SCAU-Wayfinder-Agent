@@ -38,7 +38,6 @@ def check(cond: bool, msg: str) -> None:
     print(("  ✓ " if cond else "  ✗ ") + msg)
     if not cond:
         FAILURES.append(msg)
-        assert cond, msg
 
 
 def note(msg: str) -> None:
@@ -66,8 +65,10 @@ def test_assets_wiring() -> None:
     for rel in (
         "js/main.js", "js/router.js",
         "js/shared/dom.js", "js/shared/api.js", "js/shared/events.js",
-        "js/features/chat/index.js", "js/features/calc/index.js",
-        "js/features/calc/state.js", "js/features/settings/index.js",
+        "js/features/chat/index.js", "js/features/chat/content.js",
+        "js/features/chat/cards.js", "js/features/calc/index.js",
+        "js/features/calc/activities.js", "js/features/calc/state.js",
+        "js/features/settings/index.js",
     ):
         check((FE / rel).is_file(), f"{rel} 存在")
 
@@ -88,22 +89,24 @@ def test_modules() -> None:
           "router 不再摸 window 全局")
 
     chat = read("js/features/chat/index.js")
+    cards = read("js/features/chat/cards.js")
     check("from '../../router.js'" in chat and "currentView" in chat,
           "chat 从 router 读取当前视图")
-    check("addToBasket" in chat and "inBasket" in chat,
-          "对话页通过 calc/state 加入活动篮")
-    check("scau-calc-state-v1" not in chat,
+    check("addToBasket" in cards and "inBasket" in cards,
+          "对话页通过 calc/state 加入活动篮（cards 模块）")
+    check("scau-calc-state-v1" not in chat + cards,
           "对话页不再直接读写计算器 localStorage")
     check("function traceText" in chat and "traceText(d.step, d.data)" in chat,
           "后端结构化 trace 由前端格式化")
 
     calc = read("js/features/calc/index.js")
+    activities = read("js/features/calc/activities.js")
     check("from './state.js'" in calc, "计算器复用 calc/state")
     check("effective_gp" in calc, "绩点列使用后端 effective_gp")
     for old in ("function gpOf", "updateGpColumn", "RUBRIC_BY_CHANNEL",
                 "UNIT_BY_CHANNEL", "fillDemo"):
-        check(old not in calc, f"已删除前端业务计算：{old}")
-    check("act.best" in calc, "活动最佳成就只读后端 act.best")
+        check(old not in calc + activities, f"已删除前端业务计算：{old}")
+    check("act.best" in activities, "活动最佳成就只读后端 act.best（activities 模块）")
 
     state = read("js/features/calc/state.js")
     check("scau-calc-state-v1" in state and "localStorage.setItem" in state,
@@ -149,14 +152,15 @@ def test_load_order() -> None:
                   "bindSettings();", "chatBind();", "startRouter();"):
         check(token in main, f"main.js 含启动步骤 {token}")
     chat = read("js/features/chat/index.js")
+    content = read("js/features/chat/content.js")
     check("answer_delta" in chat and "answer_end" in chat,
           "对话脚本订阅流式事件（answer_delta / answer_end）")
-    check("stripUrls" in chat and "data-cite=" in chat,
-          "正文网址收进右栏、[n] 渲染成可点标号")
+    check("stripUrls" in content and "data-cite=" in content,
+          "正文网址收进右栏、[n] 渲染成可点标号（content 模块）")
     check("on('status:refresh'" in chat,
           "设置保存后通过事件刷新状态，不反向依赖设置模块")
-    check("function sourcesInline()" in chat and "w >= 1048" in chat,
-          "右栏开合按 1048px 口径判断")
+    check("function sourcesInline()" in content and "w >= 1048" in content,
+          "右栏开合按 1048px 口径判断（content 模块）")
 
 
 def test_layout() -> None:

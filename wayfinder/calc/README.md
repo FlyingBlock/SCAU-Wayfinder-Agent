@@ -13,7 +13,7 @@
 | `basket.py` | 活动篮：活动 × 名次 → 各通道加分 |
 | `comprehensive.py` | 综测五分项、加分路由与上限 |
 | `goals.py` | 13 条路线的门槛判定与课程分摊 |
-| `engine.py` | Facade：`Calculator.catalog()` / `evaluate_dict()` / `target_for_course()` |
+| `engine.py` | Facade：`Calculator.catalog()` / `activities_page()` / `evaluate_dict()` / `target_for_course()` |
 | `competitions.py` | 《学生竞赛奖励办法》名录 → 具体赛事与加分档位 |
 
 `calc` 不联网。赛事名录的「刷新联网」在
@@ -21,6 +21,11 @@
 只在用户主动点击时调用；它把结果写进缓存，calc 下次装载时读取。
 
 ## 数据驱动
+
+`Calculator.activities_page()` 提供活动篮的筛选/排序；前端不再复制这套匹配规则。
+`Calculator.catalog(include_activities=False)` 用于首屏瘦身；活动列表按需请求。
+活动 JSON 同时返回 `channel_groups`（zongce / tuimian / credit / hours），
+前端不靠中文评分表名做分组。
 
 代码里没有学校特有的数字。学校改细则只改 `calcdata/` 下的 JSON：
 

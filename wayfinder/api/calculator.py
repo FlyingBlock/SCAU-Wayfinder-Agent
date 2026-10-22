@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import json
 
-from ..server.http import Request, Response, error_response, json_response
+from ..protocol.http import Request, Response, error_response, json_response
 from ..services import Services
 
 
 def catalog(req: Request, svc: Services) -> Response:
-    return json_response(svc.calculator().catalog())
+    include = (req.query.get("activities") or "1").lower() not in ("0", "false", "no")
+    return json_response(svc.calculator().catalog(include_activities=include))
 
 
 def evaluate(req: Request, svc: Services) -> Response:
@@ -37,27 +38,34 @@ def target(req: Request, svc: Services) -> Response:
         req.query.get("major") or "", scores, goal))
 
 
+def activities(req: Request, svc: Services) -> Response:
+    """活动篮列表：筛选/排序由后端完成，前端只负责渲染。"""
+    scored = (req.query.get("scored") or "").lower() in ("1", "true", "yes")
+    return json_response(svc.calculator().activities_page(
+        kind=req.query.get("kind") or "",
+        appendix=req.query.get("appendix") or "",
+        category=req.query.get("category") or "",
+        level=req.query.get("level") or "",
+        scored=scored,
+        q=req.query.get("q") or "",
+    ))
+
+
 def refresh_activities(req: Request, svc: Services) -> Response:
     """「活动篮」页的『🔄 刷新联网』。
 
     抓《学生竞赛奖励办法》名录页与竞赛通知栏目，和内置名录对账并缓存。
     抓取失败不是错误状态：返回 ok=False + 每个源的原因，页面继续用内置数据。
     """
-    from ..integrations import competitions as competitions_integration
-
     try:
         timeout = int(req.body.get("timeout") or 12)
     except (TypeError, ValueError):
         timeout = 12
     timeout = max(4, min(timeout, 30))
     try:
-        res = competitions_integration.refresh(timeout=timeout)
+        res = svc.refresh_competitions(timeout=timeout)
     except Exception as e:  # noqa: BLE001 - 联网失败要能看懂
         return json_response({"ok": False, "error": f"{type(e).__name__}: {e}"})
-    # 问答卡片缓存了 Calculator().catalog()，名录刷新后必须失效。
-    from ..qa import cards as qa_cards
-
-    qa_cards.reset_cache()
     return json_response({
         "ok": bool(res.get("ok")),
         "fetched_at": res.get("fetched_at", ""),

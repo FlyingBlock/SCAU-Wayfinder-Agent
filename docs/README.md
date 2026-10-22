@@ -5,6 +5,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| `FEATURES.md` | 功能一览与入口索引（从根 README 迁入，避免与远端 README 改动冲突） |
 | `SCAU-LLM-Harness-开发指南.md` | 最初的系统设计指南（分层、抓取、检索、编排） |
 | `web.md` | 校内站点栏目清单与抓取线索 |
 | `crawl4ai-api-reference-0.9.4.md` | 外部抓取库的资料（当前实现不依赖它） |

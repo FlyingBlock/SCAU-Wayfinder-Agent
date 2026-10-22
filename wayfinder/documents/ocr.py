@@ -36,7 +36,12 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core.config import ROOT, getenv
+from ..core.config import (
+    DEFAULT_OCR_ENDPOINT,
+    OCRSettings,
+    ROOT,
+    SETTINGS as CORE_SETTINGS,
+)
 
 # --------------------------------------------------------------------------- #
 # 配置
@@ -44,7 +49,7 @@ from ..core.config import ROOT, getenv
 ENV_KEYS = ("OCR_PROVIDER", "BAIDU_OCR_API_KEY", "BAIDU_OCR_SECRET_KEY",
             "OCR_ACCURATE", "BAIDU_OCR_ENDPOINT")
 
-DEFAULT_ENDPOINT = "https://aip.baidubce.com"
+DEFAULT_ENDPOINT = DEFAULT_OCR_ENDPOINT
 TOKEN_CACHE = ROOT / "data" / "cache" / "baidu_ocr_token.json"
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024          # 百度单张图上限 4MB
 MAX_EDGE = 4096                             # 百度要求最长边 ≤ 4096（我们留余量）
@@ -65,49 +70,14 @@ def _ssl_ctx():
     return _SSL_CTX
 
 
-@dataclass
-class OCRSettings:
-    provider: str = "none"                  # baidu | none
-    api_key: str = ""
-    secret_key: str = ""
-    accurate: bool = True
-    endpoint: str = DEFAULT_ENDPOINT
-    timeout: int = 30
-
-    @classmethod
-    def from_env(cls) -> "OCRSettings":
-        provider = (getenv("OCR_PROVIDER", "") or "").strip().lower()
-        api_key = getenv("BAIDU_OCR_API_KEY")
-        secret = getenv("BAIDU_OCR_SECRET_KEY")
-        if not provider:
-            provider = "baidu" if (api_key and secret) else "none"
-        if provider == "baidu" and not (api_key and secret):
-            provider = "none"
-        return cls(
-            provider=provider,
-            api_key=api_key,
-            secret_key=secret,
-            accurate=(getenv("OCR_ACCURATE", "1") or "1").strip().lower() not in ("0", "false", "no"),
-            endpoint=(getenv("BAIDU_OCR_ENDPOINT", DEFAULT_ENDPOINT) or DEFAULT_ENDPOINT).rstrip("/"),
-        )
-
-    @property
-    def configured(self) -> bool:
-        return self.provider == "baidu" and bool(self.api_key and self.secret_key)
-
-    def describe(self) -> str:
-        if self.provider == "baidu":
-            return f"百度 OCR（{'高精度' if self.accurate else '标准'}版）"
-        return "未配置"
-
-
-# 进程内可热更新（Web 设置面板保存后立刻生效，不用重启）
-SETTINGS = OCRSettings.from_env()
+# 与 core.config.Settings.ocr 是同一个对象：默认进程共享，测试可替换。
+SETTINGS = CORE_SETTINGS.ocr
 
 
 def refresh_settings() -> OCRSettings:
-    global SETTINGS
-    SETTINGS = OCRSettings.from_env()
+    """按环境变量刷新共享配置对象（保持对象身份，避免引用漂移）。"""
+    fresh = OCRSettings.from_env()
+    SETTINGS.__dict__.update(fresh.__dict__)
     return SETTINGS
 
 

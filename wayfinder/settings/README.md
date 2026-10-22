@@ -11,8 +11,11 @@
 
 ## 三类配置的统一规矩
 
+三类配置（LLM / OCR / 登录）都挂到 `Settings` 上；`documents.ocr` 与
+`crawl.auth` 只保留指向同一对象的兼容别名，设置面板保存后原地生效。
+
 1. **留空 = 沿用当前值**（key 不回显，不能要求用户重填）；
-2. 先原地更新当前进程（传入的 `Settings.llm` / OCR / AUTH 设置对象），再按需合并写 `.env`；
+2. 先原地更新当前进程（`Settings.llm` / `Settings.ocr` / `Settings.auth`），再按需合并写 `.env`；
 3. 写盘失败只作为 `warning` 返回，不阻断「本次运行已生效」。
 
 API 层的 `api/settings.py` 只转发 `commands.*`；CLI 也复用同一组用例，

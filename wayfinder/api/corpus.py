@@ -8,10 +8,8 @@ import mimetypes
 import urllib.parse
 from pathlib import Path
 
-from ..documents.attachments import ATTACH_DIR
-from ..server.http import Request, Response, error_response, json_response
+from ..protocol.http import Request, Response, error_response, json_response
 from ..services import Services
-from ..settings.service import ocr_configured
 
 
 def status(req: Request, svc: Services) -> Response:
@@ -32,7 +30,7 @@ def status(req: Request, svc: Services) -> Response:
         "db": str(svc.settings.crawl.db_path),
         "attachments": stats.get("attachments", 0),
         "attachments_with_text": stats.get("attachments_with_text", 0),
-        "ocr_configured": ocr_configured(),
+        "ocr_configured": svc.settings.ocr.configured,
     })
 
 
@@ -112,7 +110,7 @@ def attachment_file(req: Request, svc: Services) -> Response:
     rel = urllib.parse.unquote(req.query.get("stored") or req.query.get("path") or "")
     if not rel:
         return error_response("缺少 stored 参数", 400)
-    base = ATTACH_DIR.resolve()
+    base = svc.attachment_dir().resolve()
     rel_norm = rel.replace("\\", "/").lstrip("/")
     prefix = "data/attachments/"
     if rel_norm.startswith(prefix):

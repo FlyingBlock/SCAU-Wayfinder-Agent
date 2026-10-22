@@ -1,11 +1,11 @@
 """路由装配：把各领域 API 注册成一张路由表。
 
-`main.py` 只调用 `build_router(services)`；新增接口时改这一处，
+`app.build_application()` 调用 `build_router(services)`；新增接口时改这一处，
 传输层与前端都不需要知道具体实现。
 """
 from __future__ import annotations
 
-from ..server.http import HandlerFn, Router
+from ..protocol.http import HandlerFn, Router
 from ..services import Services
 from . import calculator, chat, corpus, settings
 
@@ -29,6 +29,7 @@ def build_router(services: Services) -> Router:
 
     # ---- 计算器 ----
     r.get("/api/calc/catalog", _bind(calculator.catalog, services))
+    r.get("/api/calc/activities", _bind(calculator.activities, services))
     r.get("/api/calc/target", _bind(calculator.target, services))
     r.post("/api/calc/evaluate", _bind(calculator.evaluate, services))
     r.post("/api/calc/activities/refresh", _bind(calculator.refresh_activities, services))

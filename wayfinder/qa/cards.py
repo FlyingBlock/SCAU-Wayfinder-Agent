@@ -458,7 +458,7 @@ def attachment_kind(url: str) -> str:
 def _norm_url(url: str) -> str:
     """附件 URL 归一化（http/https、fragment、大小写域名），用于和库里的记录对齐。"""
     try:
-        from ..crawl.fetcher import normalize_url
+        from ..core.urls import normalize_url
 
         return normalize_url(url)
     except Exception:
@@ -796,7 +796,8 @@ def _file_cards(evidence: Sequence[Any], store=None) -> tuple[list[dict], dict[i
                 "kind": KIND_FILE,
                 "url": u,
                 "file_name": file_name(u),
-                "file_kind": FILE_KINDS.get(ext, ext.upper() or "文件"),
+                "file_kind": ext or "file",
+                "file_label": FILE_KINDS.get(ext, ext.upper() or "文件"),
                 "ext": ext,
                 "title": getattr(ev, "title", "") or "",
                 "source": {
@@ -917,7 +918,8 @@ def _activity_cards(evidence: Sequence[Any], store=None
                 "kind": KIND_FILE,
                 "url": getattr(ev, "url", "") or "",
                 "file_name": "（正文提到的附件，链接未在页面里出现）",
-                "file_kind": "附件",
+                "file_kind": "file",
+                "file_label": "附件",
                 "ext": "",
                 "title": getattr(ev, "title", "") or "",
                 "note": "通知正文提到附件，但抓到的页面里没有可直接下载的链接。"

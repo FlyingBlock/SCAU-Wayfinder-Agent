@@ -45,7 +45,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core.config import ROOT, getenv
+from ..core.config import AuthSettings, ROOT, SETTINGS as CORE_SETTINGS
 
 # --------------------------------------------------------------------------- #
 # 默认端点与落盘位置
@@ -133,48 +133,14 @@ CAPTCHA_GUESS_PATHS = ("/lyuapServer/captcha", "/lyuapServer/kaptcha",
 # 和 OCR 那套一样：值写在 `.env`（非机密），保存后原地热更新，不用重启服务。
 # 账号密码本身**不进 .env**，只落在 `.auth/credentials.json`。
 # --------------------------------------------------------------------------- #
-def _env_flag(name: str, default: bool) -> bool:
-    raw = (getenv(name, "1" if default else "0") or "").strip().lower()
-    return raw not in ("0", "false", "no", "off", "")
-
-
-@dataclass
-class AuthSettings:
-    auto_login: bool = True        # 撞到登录墙时自动用保存的账号密码登录
-    ocr_captcha: bool = True       # 登录页有验证码时用 OCR 识别
-    captcha_rounds: int = 3        # 验证码认错时最多换几张图重试
-    service: str = ""              # 登录后跳转的目标地址（空 = 融合门户）
-    captcha_url: str = ""          # 验证码图片地址（页面上猜不到时手填）
-
-    @classmethod
-    def from_env(cls) -> "AuthSettings":
-        try:
-            rounds = int(getenv("AUTH_CAPTCHA_ROUNDS", "3") or 3)
-        except ValueError:
-            rounds = 3
-        return cls(
-            auto_login=_env_flag("AUTH_AUTO_LOGIN", True),
-            ocr_captcha=_env_flag("AUTH_OCR_CAPTCHA", True),
-            captcha_rounds=max(1, min(rounds, 8)),
-            service=getenv("AUTH_SERVICE"),
-            captcha_url=getenv("AUTH_CAPTCHA_URL"),
-        )
-
-    def describe(self) -> str:
-        bits = [f"自动登录 {'开' if self.auto_login else '关'}",
-                f"验证码 OCR {'开' if self.ocr_captcha else '关'}（最多 {self.captcha_rounds} 次）"]
-        if self.service:
-            bits.append(f"service={self.service}")
-        return "，".join(bits)
-
-
-# 进程内可热更新（Web 设置面板保存后立刻生效，不用重启）
-SETTINGS = AuthSettings.from_env()
+# 与 core.config.Settings.auth 是同一个对象：默认进程共享，测试可替换。
+SETTINGS = CORE_SETTINGS.auth
 
 
 def refresh_settings() -> AuthSettings:
-    global SETTINGS
-    SETTINGS = AuthSettings.from_env()
+    """按环境变量刷新共享配置对象（保持对象身份，避免引用漂移）。"""
+    fresh = AuthSettings.from_env()
+    SETTINGS.__dict__.update(fresh.__dict__)
     return SETTINGS
 
 
@@ -979,8 +945,9 @@ def _restrict(path: Path) -> None:
             import subprocess
 
             user = f"{os.environ.get('USERDOMAIN', '')}\\{getpass.getuser()}".lstrip("\\")
+            # 只授权当前用户；必须包含 D（删除），否则 logout/clear 无法删掉 cookie。
             subprocess.run(["icacls", str(path), "/inheritance:r",
-                            "/grant:r", f"{user}:(R,W)"],
+                            "/grant:r", f"{user}:(F)"],
                            capture_output=True, timeout=15)
         else:
             os.chmod(path, 0o600)
@@ -1053,8 +1020,10 @@ def credentials_state() -> dict:
 # --------------------------------------------------------------------------- #
 # 会话状态 / 自动登录
 # --------------------------------------------------------------------------- #
-def session_state(sess: "AuthSession | None" = None) -> dict:
+def session_state(sess: "AuthSession | None" = None, *,
+                  settings: AuthSettings | None = None) -> dict:
     """当前会话能进到什么程度（设置面板与 doctor 共用）。"""
+    st = settings or SETTINGS
     s = sess or AuthSession()
     expires = []
     for c in s.jar:
@@ -1074,12 +1043,12 @@ def session_state(sess: "AuthSession | None" = None) -> dict:
         "cookies_total": len(list(s.jar)),
         "saved_at": saved_at,
         "expires_soonest": min(expires) if expires else 0,
-        "service": SETTINGS.service or DEFAULT_SERVICE,
+        "service": st.service or DEFAULT_SERVICE,
         "cas_base": CAS_BASE,
-        "auto_login": SETTINGS.auto_login,
-        "ocr_captcha": SETTINGS.ocr_captcha,
-        "captcha_rounds": SETTINGS.captcha_rounds,
-        "captcha_url": SETTINGS.captcha_url,
+        "auto_login": st.auto_login,
+        "ocr_captcha": st.ocr_captcha,
+        "captcha_rounds": st.captcha_rounds,
+        "captcha_url": st.captcha_url,
     }
 
 

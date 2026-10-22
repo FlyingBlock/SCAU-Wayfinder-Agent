@@ -278,11 +278,93 @@ class CrawlSettings:
         return self.data_dir / "crawler.db"
 
 
+DEFAULT_OCR_ENDPOINT = "https://aip.baidubce.com"
+
+
+@dataclass
+class OCRSettings:
+    """OCR 配置；与 `Settings.ocr` 共享同一个对象，设置面板热更新即可生效。"""
+
+    provider: str = "none"                  # baidu | none
+    api_key: str = ""
+    secret_key: str = ""
+    accurate: bool = True
+    endpoint: str = DEFAULT_OCR_ENDPOINT
+    timeout: int = 30
+
+    @classmethod
+    def from_env(cls) -> "OCRSettings":
+        provider = (getenv("OCR_PROVIDER", "") or "").strip().lower()
+        api_key = getenv("BAIDU_OCR_API_KEY")
+        secret = getenv("BAIDU_OCR_SECRET_KEY")
+        if not provider:
+            provider = "baidu" if (api_key and secret) else "none"
+        if provider == "baidu" and not (api_key and secret):
+            provider = "none"
+        return cls(
+            provider=provider,
+            api_key=api_key,
+            secret_key=secret,
+            accurate=(getenv("OCR_ACCURATE", "1") or "1").strip().lower()
+            not in ("0", "false", "no"),
+            endpoint=(getenv("BAIDU_OCR_ENDPOINT", DEFAULT_OCR_ENDPOINT)
+                      or DEFAULT_OCR_ENDPOINT).rstrip("/"),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return self.provider == "baidu" and bool(self.api_key and self.secret_key)
+
+    def describe(self) -> str:
+        if self.provider == "baidu":
+            return f"百度 OCR（{'高精度' if self.accurate else '标准'}版）"
+        return "未配置"
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = (getenv(name, "1" if default else "0") or "").strip().lower()
+    return raw not in ("0", "false", "no", "off", "")
+
+
+@dataclass
+class AuthSettings:
+    """登录墙行为配置；与 `Settings.auth` 共享同一个对象。"""
+
+    auto_login: bool = True        # 撞到登录墙时自动用保存的账号密码登录
+    ocr_captcha: bool = True       # 登录页有验证码时用 OCR 识别
+    captcha_rounds: int = 3        # 验证码认错时最多换几张图重试
+    service: str = ""              # 登录后跳转的目标地址（空 = 融合门户）
+    captcha_url: str = ""          # 验证码图片地址（页面上猜不到时手填）
+
+    @classmethod
+    def from_env(cls) -> "AuthSettings":
+        try:
+            rounds = int(getenv("AUTH_CAPTCHA_ROUNDS", "3") or 3)
+        except ValueError:
+            rounds = 3
+        return cls(
+            auto_login=_env_flag("AUTH_AUTO_LOGIN", True),
+            ocr_captcha=_env_flag("AUTH_OCR_CAPTCHA", True),
+            captcha_rounds=max(1, min(rounds, 8)),
+            service=getenv("AUTH_SERVICE"),
+            captcha_url=getenv("AUTH_CAPTCHA_URL"),
+        )
+
+    def describe(self) -> str:
+        bits = [f"自动登录 {'开' if self.auto_login else '关'}",
+                f"验证码 OCR {'开' if self.ocr_captcha else '关'}（最多 {self.captcha_rounds} 次）"]
+        if self.service:
+            bits.append(f"service={self.service}")
+        return "，".join(bits)
+
+
 @dataclass
 class Settings:
     llm: LLMSettings = field(default_factory=LLMSettings.from_env)
     search: SearchSettings = field(default_factory=SearchSettings.from_env)
     crawl: CrawlSettings = field(default_factory=CrawlSettings.from_env)
+    ocr: OCRSettings = field(default_factory=OCRSettings.from_env)
+    auth: AuthSettings = field(default_factory=AuthSettings.from_env)
     seed_file: Path = field(default_factory=lambda: _first_existing(
         ROOT / "seed" / "scau_bio_seed.yaml",      # 本仓库布局
         ROOT / "scau_bio_seed.yaml",

@@ -1,7 +1,8 @@
 """进程级服务容器：只负责按配置提供领域依赖。
 
 由 :func:`wayfinder.app.build_services` 构造，API 层通过它取得 Store、
-Calculator、Searcher、LLM 与 Agent，而不是各自 import 全局 ``SETTINGS``。
+Calculator、Searcher、LLM、Agent、附件目录与赛事刷新用例，而不是各自
+import 全局 ``SETTINGS``。OCR/登录配置在 ``Settings.ocr`` / ``Settings.auth``。
 
 Store 仍然按请求创建：SQLite 连接不能跨线程共享，且采集写入后下一次请求
 应立即看到新数据。其余对象默认是轻量工厂，测试可以替换成假实现。
@@ -74,3 +75,19 @@ class Services:
         if self._agent_factory is not None:
             return self._agent_factory(store)
         return Agent(store, self.llm(), self.searcher(), self.settings)
+
+    def attachment_dir(self):
+        """附件落盘目录；API 只通过容器取路径，不直接 import documents。"""
+        from .documents.attachments import ATTACH_DIR
+
+        return ATTACH_DIR
+
+    def refresh_competitions(self, *, timeout: int = 12) -> dict:
+        """联网刷新赛事名录，并让问答卡片缓存失效。"""
+        from .integrations import competitions
+
+        res = competitions.refresh(timeout=timeout)
+        from .qa import cards
+
+        cards.reset_cache()
+        return res

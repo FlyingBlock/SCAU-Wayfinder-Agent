@@ -79,15 +79,18 @@ class Calculator:
     def activities(self) -> list[Activity]:
         return self.data.activities
 
-    def catalog(self) -> dict:
-        """一次性给前端所有静态数据：专业、课程、规则、门槛、活动、指标。"""
+    def catalog(self, *, include_activities: bool = True) -> dict:
+        """给前端的静态数据；活动列表可由 ``activities_page()`` 单独取。
+
+        ``include_activities=False`` 时不再把 150+ 条活动塞进 catalog，
+        前端首屏只拿专业/规则/门槛/指标，活动篮按需请求。
+        """
         # preview_all() 一次算完所有活动的档位预览，不要放进逐条循环里
         # （赛事名录展开后活动有 150+ 条，逐条再算一遍就是 O(n²)）。
-        preview = self.basket.preview_all()
-        return {
+        preview = self.basket.preview_all() if include_activities else {}
+        out = {
             "majors": [self._major_json(m) for m in self.data.majors],
             "goals": [self._goal_json(g) for g in self.data.goals],
-            "activities": [self._activity_json(a, preview) for a in self.data.activities],
             "categories": sorted({a.category for a in self.data.activities if a.category}),
             "levels": sorted({a.level for a in self.data.activities if a.level}),
             "channels": sorted({c for a in self.data.activities for c in a.channels}),
@@ -124,6 +127,74 @@ class Calculator:
             "meta": self.data.meta,
             "warnings": self.data.warnings,
             "goal_requirements": None,
+        }
+        if include_activities:
+            out["activities"] = [
+                self._activity_json(a, preview) for a in self.data.activities
+            ]
+        return out
+
+    def activities_page(self, *, kind: str = "", appendix: str = "",
+                        category: str = "", level: str = "",
+                        scored: bool = False, q: str = "") -> dict:
+        """活动篮的列表页：筛选/排序留在后端，前端只渲染结果。
+
+        ``catalog()`` 仍保留完整活动供离线缓存/其它调用；这个方法是翻页/筛选
+        的正式入口，避免把 151 条活动的匹配规则复制到浏览器里。
+        """
+        preview = self.basket.preview_all()
+        needle = (q or "").strip().lower()
+        rows: list[tuple[int, object, dict]] = []
+
+        def as_int(value) -> int:
+            try:
+                return int(value or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        for idx, activity in enumerate(self.data.activities):
+            extra = activity.extra or {}
+            activity_kind = activity.list_kind or "general"
+            if kind == "competition" and activity_kind == "general":
+                continue
+            if kind == "general" and activity_kind != "general":
+                continue
+            if appendix and str(extra.get("appendix", "")) != str(appendix):
+                continue
+            if category and activity.category != category:
+                continue
+            if level and activity.level != level:
+                continue
+
+            item = self._activity_json(activity, preview)
+            if scored and (item.get("best") or {}).get("best", 0) <= 0:
+                continue
+            if needle:
+                hay = " ".join(str(x or "") for x in (
+                    activity.name, activity.category, activity.level,
+                    activity.organizer, activity.note, activity.eligibility,
+                    extra.get("raw_name"), extra.get("tier_label"),
+                    extra.get("profile_label"), extra.get("appendix_title"),
+                    " ".join(activity.tags or []),
+                    " ".join((activity.channels or {}).keys()),
+                )).lower()
+                if needle not in hay:
+                    continue
+            rows.append((idx, activity, item))
+
+        def sort_key(row: tuple[int, object, dict]):
+            idx, activity, _ = row
+            extra = activity.extra or {}
+            if (activity.list_kind or "general") != "general":
+                return (0, as_int(extra.get("appendix")),
+                        as_int(extra.get("seq")), idx)
+            return (1, idx)
+
+        rows.sort(key=sort_key)
+        return {
+            "items": [item for _, _, item in rows],
+            "total": len(self.data.activities),
+            "filtered": len(rows),
         }
 
     def _major_json(self, m: Major) -> dict:
@@ -203,8 +274,21 @@ class Calculator:
             "preview": preview,
             "best": self.basket.best_preview(preview),
             "rubric": {ch: self.basket.rubric_of(ch) for ch in a.channels},
+            "channel_groups": self._channel_groups(a),
             "channel_rubric": dict(self.basket.channel_rubric),
         }
+
+    def _channel_groups(self, a: Activity) -> dict[str, list[str]]:
+        """把通道按评分表分组；前端只认 zongce/tuimian/credit/hours，不认中文标签。"""
+        groups: dict[str, list[str]] = {
+            "zongce": [], "tuimian": [], "credit": [], "hours": [], "other": [],
+        }
+        rubric_key = {"综测": "zongce", "推免": "tuimian",
+                      "学分": "credit", "时长": "hours"}
+        for channel in (a.channels or {}):
+            key = rubric_key.get(self.basket.rubric_of(channel), "other")
+            groups[key].append(channel)
+        return groups
 
     # ------------------------------------------------------------------ #
     # 主计算

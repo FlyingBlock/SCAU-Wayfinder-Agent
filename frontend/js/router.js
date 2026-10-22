@@ -1,13 +1,13 @@
 /* 路由与外壳：只负责视图切换、侧栏和 hash 路由，不认识聊天/计算器内部。 */
 import { $, $$ } from './shared/dom.js';
 
-const SUBS = {scores: 'tab-profile', goals: 'tab-goals', acts: 'tab-acts', rules: 'tab-rules'};
-const SUB_KEY = {'tab-profile': 'scores', 'tab-goals': 'goals', 'tab-acts': 'acts', 'tab-rules': 'rules'};
-const TITLES = {chat: '主页对话', calc: '绩点 / 综测计算器'};
-
 let VIEW = 'chat';
 let SUB = 'scores';
 const hooks = new Map();
+
+function meta(name){ return hooks.get(name) || {}; }
+function subsOf(name){ return meta(name).subs || {}; }
+function defaultSub(name){ return meta(name).defaultSub || Object.keys(subsOf(name))[0] || ''; }
 
 /** 功能模块注册视图钩子：{boot, sync}，由 main.js 在启动时调用。 */
 export function registerView(name, hook) {
@@ -33,24 +33,25 @@ function sidebarOpen() {
 }
 function renderSub() {
   const label = $('#sub-label');
-  const on = SUB_KEY[SUB] || (SUBS[SUB] ? SUB : 'scores');
-  if (label) label.textContent = '绩点 / 综测计算器 · ' + (({
-    scores: '① 我的成绩', goals: '② 门槛对照', acts: '③ 活动篮', rules: '④ 计算口径',
-  })[on] || '我的成绩');
+  const subs = subsOf(VIEW);
+  const on = subs[SUB] ? SUB : defaultSub(VIEW);
+  if (label) label.textContent = meta(VIEW).title + ' · ' + ((subs[on] || {}).label || '');
 }
 function applySub() {
-  Object.entries(SUBS).forEach(([key, id]) => {
-    const el = $('#' + id);
+  const subs = subsOf(VIEW);
+  Object.entries(subs).forEach(([key, item]) => {
+    const el = $('#' + (item.tab || 'tab-' + key));
     if (el) el.classList.toggle('hide', key !== SUB);
   });
   $$('#side-nav a.sub').forEach(a => a.classList.toggle(
-    'on', a.dataset.sub === SUB && a.dataset.view === 'calc'));
+    'on', a.dataset.sub === SUB && a.dataset.view === VIEW));
   renderSub();
 }
 
 export function nav(view, sub) {
-  VIEW = TITLES[view] ? view : 'chat';
-  if (VIEW === 'calc' && SUBS[sub]) SUB = sub;
+  VIEW = meta(view).title ? view : 'chat';
+  if (subsOf(VIEW)[sub]) SUB = sub;
+  if (!subsOf(VIEW)[SUB]) SUB = defaultSub(VIEW);
   $$('#side-nav a[data-view]').forEach(a => a.classList.toggle('on', a.dataset.view === VIEW));
   $$('.view').forEach(v => {
     const on = v.id === 'view-' + VIEW;
@@ -60,12 +61,12 @@ export function nav(view, sub) {
   /* 对话视图内部滚动；计算器是普通长页面，交给 #appmain。 */
   const main = $('#appmain');
   if (main) main.classList.toggle('noscroll', VIEW === 'chat');
-  if (VIEW === 'calc') {
+  if (Object.keys(subsOf(VIEW)).length) {
     applySub();
-    runHook('calc', 'boot');
+    runHook(VIEW, 'boot');
   }
   if (VIEW === 'chat') runHook('chat', 'sync');
-  document.title = (TITLES[VIEW] || '') + ' · SCAU Wayfinder · 学生发展信息助手';
+  document.title = (meta(VIEW).title || '') + ' · SCAU Wayfinder · 学生发展信息助手';
   window.scrollTo(0, 0);
   if (main) main.scrollTop = 0;
 }
@@ -73,13 +74,13 @@ export function nav(view, sub) {
 export function hashNav(hash) {
   if ((hash || '').indexOf('#/calc') === 0) {
     const parts = hash.split('/');
-    return nav('calc', parts[2] || 'scores');
+    return nav('calc', parts[2] || defaultSub('calc'));
   }
   return nav('chat');
 }
 
 export function go(view, sub) {
-  location.hash = view === 'calc' ? '#/calc/' + (sub || 'scores') : '#/chat';
+  location.hash = view === 'calc' ? '#/calc/' + (sub || defaultSub('calc')) : '#/chat';
 }
 
 /** 启动外壳：绑定侧栏/快捷问题/hashchange，并按当前 URL 落到视图。 */
@@ -114,8 +115,8 @@ export function startRouter() {
   const path = location.pathname.replace(/\/+$/, '');
   if (path === '/calc-docs') return hashNav('#/calc/rules');
   if (path === '/calc' || path.indexOf('/calc/') === 0) {
-    const sub = path.split('/')[2] || 'scores';
-    return hashNav('#/calc/' + (SUBS[sub] ? sub : 'scores'));
+    const sub = path.split('/')[2] || defaultSub('calc');
+    return hashNav('#/calc/' + (subsOf('calc')[sub] ? sub : defaultSub('calc')));
   }
   return hashNav('#/chat');
 }

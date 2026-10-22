@@ -151,7 +151,9 @@ def main() -> int:
         page = "\n".join(stream(port, path) for path in (
             "/", "/assets/css/shell.css",
             "/assets/js/main.js", "/assets/js/features/chat/index.js",
-            "/assets/js/features/calc/index.js", "/assets/js/shared/toast.js"))
+            "/assets/js/features/chat/content.js", "/assets/js/features/chat/cards.js",
+            "/assets/js/features/calc/index.js", "/assets/js/features/calc/activities.js",
+            "/assets/js/shared/toast.js"))
         for probe, what in [("cards-wrap", "卡片容器"), ("class=\"acard", "卡片样式"),
                             ("renderCards", "卡片渲染函数"),
                             ("添加到活动篮", "入篮按钮文案"),
@@ -203,7 +205,7 @@ def main() -> int:
             if not a.get("in_registry"):
                 check(not a.get("basket_ready") and bool(a.get("registry_note")),
                       f"未匹配名录的「{a.get('name')}」如实标注、不给假分值")
-        check(any(f.get("file_kind") in ("Word", "PDF", "压缩包") for f in files),
+        check(any(f.get("file_label") in ("Word", "PDF", "压缩包") for f in files),
               "附件卡带文件类型标签")
         check(all((f.get("source") or {}).get("n") for f in files),
               "附件卡能回溯到证据编号")

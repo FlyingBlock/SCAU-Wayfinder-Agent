@@ -1,13 +1,12 @@
-"""HTTP 传输层：路由分发、静态资源、JSON 与 SSE 帧格式。
+"""HTTP 传输层：把协议原语写回 socket，并托管静态前端。
 
-这一层**不认识业务**：它只把 `Request` 交给注册好的处理函数，再把返回的
-`Response` 写回 socket。业务处理函数住在 `wayfinder/api/`，界面住在 `frontend/`。
+这一层**不认识业务，也不认识具体前端页面**：业务处理函数住在
+`wayfinder/api/`，请求/响应/路由类型住在 `wayfinder/protocol/`。
 
 路由规则：
-  · `GET /`、`/calc`、`/calc/<sub>`、`/calc-docs`  → `frontend/index.html`
-    （单页应用的 hash 路由由前端负责，服务端只保证深链接不 404）
-  · `GET /assets/<path>`                            → `frontend/<path>`
-  · 其余路径查路由表                                  → `Response`
+  · `/assets/<path>`        → `frontend/<path>`
+  · `/api/<path>`           → 查路由表，未命中 404
+  · 其它无扩展名的 GET 路径  → `frontend/index.html`（SPA 通用回退）
 """
 from __future__ import annotations
 
@@ -18,55 +17,13 @@ import sys
 import threading
 import urllib.parse
 import webbrowser
-from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable, Iterable
 
 from ..core.config import ROOT
+from ..protocol.http import Request, Response, Router, json_response
 
 FRONTEND_DIR = ROOT / "frontend"
-
-#: SPA 深链接：这些路径都返回同一份 index.html，由前端 hash 路由落到具体视图。
-SPA_PATHS = ("/", "/index.html", "/calc", "/calc/", "/calc-docs", "/calc-docs/")
-
-
-# --------------------------------------------------------------------------- #
-# 请求 / 响应
-# --------------------------------------------------------------------------- #
-@dataclass
-class Request:
-    method: str
-    path: str
-    query: dict[str, str] = field(default_factory=dict)
-    headers: dict[str, str] = field(default_factory=dict)
-    body: dict = field(default_factory=dict)
-    client_host: str = ""
-
-    @property
-    def local(self) -> bool:
-        return self.client_host in ("127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1")
-
-
-@dataclass
-class Response:
-    status: int = 200
-    body: bytes = b""
-    content_type: str = "application/json; charset=utf-8"
-    headers: dict[str, str] = field(default_factory=dict)
-    #: SSE 事件流：(event, data) 序列；有它时忽略 body。
-    stream: Iterable[tuple[str, dict]] | None = None
-
-
-def json_response(obj, status: int = 200) -> Response:
-    return Response(status=status,
-                    body=json.dumps(obj, ensure_ascii=False).encode("utf-8"))
-
-
-def error_response(message: str, status: int = 400, **extra) -> Response:
-    payload = {"ok": False, "error": message}
-    payload.update(extra)
-    return json_response(payload, status)
 
 
 def file_response(path: Path) -> Response:
@@ -74,43 +31,6 @@ def file_response(path: Path) -> Response:
     if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
         ctype += "; charset=utf-8"
     return Response(status=200, body=path.read_bytes(), content_type=ctype)
-
-
-def sse_response(events: Iterable[tuple[str, dict]]) -> Response:
-    return Response(status=200, stream=events,
-                    content_type="text/event-stream; charset=utf-8",
-                    headers={"Cache-Control": "no-cache",
-                             "X-Accel-Buffering": "no",
-                             "Connection": "close"})
-
-
-# --------------------------------------------------------------------------- #
-# 路由表
-# --------------------------------------------------------------------------- #
-HandlerFn = Callable[[Request], Response]
-
-
-class Router:
-    """精确路径路由表。业务简单，不需要参数化路由。"""
-
-    def __init__(self) -> None:
-        self._routes: dict[tuple[str, str], HandlerFn] = {}
-
-    def add(self, method: str, path: str, fn: HandlerFn) -> "Router":
-        self._routes[(method.upper(), path)] = fn
-        return self
-
-    def get(self, path: str, fn: HandlerFn) -> "Router":
-        return self.add("GET", path, fn)
-
-    def post(self, path: str, fn: HandlerFn) -> "Router":
-        return self.add("POST", path, fn)
-
-    def match(self, method: str, path: str) -> HandlerFn | None:
-        return self._routes.get((method.upper(), path))
-
-    def paths(self) -> list[tuple[str, str]]:
-        return sorted(self._routes)
 
 
 # --------------------------------------------------------------------------- #
@@ -184,18 +104,49 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
+    @staticmethod
+    def _write_request_allowed(req: Request) -> bool:
+        """设置写接口的浏览器来源校验；CLI / 测试没有 Origin 时放行。"""
+        site = (req.headers.get("sec-fetch-site") or "").lower()
+        if site in ("cross-site", "same-site"):
+            return False
+        origin = (req.headers.get("origin") or "").strip()
+        if not origin:
+            return True
+        host = (req.headers.get("host") or "").strip().lower()
+        return urllib.parse.urlsplit(origin).netloc.lower() == host
+
     def _route(self, req: Request) -> Response:
+        if req.method == "POST" and req.path.startswith("/api/settings/"):
+            if not self._write_request_allowed(req):
+                return json_response(
+                    {"ok": False, "code": "cross_origin", "error": "cross-origin request rejected"},
+                    403,
+                )
+            ctype = (req.headers.get("content-type") or "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                return json_response(
+                    {"ok": False, "code": "unsupported_media_type",
+                     "error": "settings writes require application/json"},
+                    415,
+                )
+
+        handler = self.server.router.match(req.method, req.path)
+        if handler is not None:
+            return handler(req)
+
         if req.method == "GET":
             if req.path == "/favicon.ico":
                 return Response(status=204, body=b"", content_type="image/x-icon")
-            if req.path in SPA_PATHS or req.path.startswith("/calc/"):
-                return self._static("index.html")
             if req.path.startswith("/assets/"):
                 return self._static(req.path[len("/assets/"):])
-        handler = self.server.router.match(req.method, req.path)
-        if handler is None:
-            return json_response({"error": "not found"}, 404)
-        return handler(req)
+            # 通用 SPA 回退：传输层不认识 /calc、/calc-docs 这类具体页面。
+            # 只对无扩展名、且不是 /api 的路径回 index.html，避免把缺失的
+            # 静态资源或 API 误当成页面。
+            if not req.path.startswith("/api") and not Path(req.path).suffix:
+                return self._static("index.html")
+
+        return json_response({"error": "not found"}, 404)
 
     # ------------------------------------------------------------------ #
     def _static(self, rel: str) -> Response:

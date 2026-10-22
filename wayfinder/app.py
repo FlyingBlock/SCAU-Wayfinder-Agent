@@ -4,13 +4,14 @@
 - :func:`build_application`：把服务交给 ``api.registry`` 生成路由表；
 - :func:`run_web`：启动 HTTP 传输层。
 
-这里不写业务逻辑，也不拼 HTML。``main.py`` 只保留入口分发。
+这里只做启动装配与启动信息统计，不写业务规则，也不拼 HTML。``main.py`` 只保留入口分发。
 """
 from __future__ import annotations
 
 from .api.registry import build_router
 from .core.config import SETTINGS, Settings
-from .server.http import Router, serve
+from .protocol.http import Router
+from .server.http import serve
 from .services import Services
 
 

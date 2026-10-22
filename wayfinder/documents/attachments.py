@@ -103,7 +103,7 @@ def kind_of(name: str, data: bytes = b"") -> str:
 def _norm_url(url: str) -> str:
     """URL 规范化（http→https、去 fragment），用于跨记录对齐同一份附件。"""
     try:
-        from ..crawl.fetcher import normalize_url
+        from ..core.urls import normalize_url
 
         return normalize_url(url)
     except Exception:

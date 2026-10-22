@@ -24,7 +24,9 @@ from ..core.config import (
     LLM_PRESETS,
     OCR_ENV_KEYS,
     SETTINGS,
+    AuthSettings,
     LLMSettings,
+    OCRSettings,
     env_file_shadowed_keys,
     write_env_file,
 )
@@ -48,12 +50,11 @@ def is_local(host: str) -> bool:
     return (host or "") in ("127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1")
 
 
-def ocr_configured() -> bool:
-    """OCR 是否已配置（状态栏用）。单独包一层是为了不把 ocr 模块拖进导入期。"""
+def ocr_configured(settings=None) -> bool:
+    """OCR 是否已配置（状态栏用）。读取传入的 Settings，不碰模块全局。"""
     try:
-        from ..documents import ocr as ocr_mod
-
-        return bool(ocr_mod.SETTINGS.configured)
+        cfg = settings or SETTINGS
+        return bool(cfg.ocr.configured)
     except Exception:  # noqa: BLE001 - 状态查询失败按未配置处理
         return False
 
@@ -137,8 +138,9 @@ def llm_state(writable: bool, extra: dict | None = None, *,
 
 def apply_ocr_settings(*, provider: str | None = None, api_key: str | None = None,
                        secret_key: str | None = None, accurate: bool | None = None,
-                       persist: bool = True, env_file=None) -> dict:
-    """把一份 OCR 配置应用到当前进程并按需落盘。与 `apply_llm_settings` 同构。"""
+                       persist: bool = True, env_file=None, settings=None) -> dict:
+    """把一份 OCR 配置应用到指定 ``Settings`` 并按需落盘。与 LLM 同构。"""
+    cfg = settings or SETTINGS
     updates: dict[str, str] = {}
     if provider is not None and provider.strip():
         p = provider.strip().lower()
@@ -163,20 +165,14 @@ def apply_ocr_settings(*, provider: str | None = None, api_key: str | None = Non
         except OSError as e:
             warning = f"OCR 配置已在本次运行中生效，但写入 .env 失败：{e}"
 
-    settings = None
-    try:
-        from ..documents import ocr as ocr_mod
-
-        settings = ocr_mod.refresh_settings()
-    except Exception as e:  # noqa: BLE001
-        warning = warning or f"{type(e).__name__}: {e}"
-
-    return {"settings": settings, "applied": sorted(updates), "wrote": wrote,
+    cfg.ocr.__dict__.update(OCRSettings.from_env().__dict__)
+    return {"settings": cfg.ocr, "applied": sorted(updates), "wrote": wrote,
             "warning": warning}
 
 
-def clear_ocr_settings(*, persist: bool = True, env_file=None) -> dict:
+def clear_ocr_settings(*, persist: bool = True, env_file=None, settings=None) -> dict:
     """清掉 OCR 凭据（设置面板「清除」按钮用）。"""
+    cfg = settings or SETTINGS
     for key in ("BAIDU_OCR_API_KEY", "BAIDU_OCR_SECRET_KEY"):
         os.environ.pop(key, None)
     os.environ["OCR_PROVIDER"] = "none"
@@ -189,14 +185,8 @@ def clear_ocr_settings(*, persist: bool = True, env_file=None) -> dict:
             wrote = True
         except OSError as e:
             warning = f"清除只对本次运行生效，写入 .env 失败：{e}"
-    settings = None
-    try:
-        from ..documents import ocr as ocr_mod
-
-        settings = ocr_mod.refresh_settings()
-    except Exception as e:  # noqa: BLE001
-        warning = warning or f"{type(e).__name__}: {e}"
-    return {"settings": settings, "applied": sorted(updates), "wrote": wrote,
+    cfg.ocr.__dict__.update(OCRSettings.from_env().__dict__)
+    return {"settings": cfg.ocr, "applied": sorted(updates), "wrote": wrote,
             "warning": warning}
 
 
@@ -208,6 +198,7 @@ def ocr_state(writable: bool, extra: dict | None = None, *, settings=None) -> di
     from ..documents import ocr as ocr_mod
 
     cfg = settings or SETTINGS
+    ocr_cfg = cfg.ocr
     st = Store(cfg.crawl.db_path)
     try:
         stats = st.stats()
@@ -217,15 +208,15 @@ def ocr_state(writable: bool, extra: dict | None = None, *, settings=None) -> di
     a = attach_mod.AttachmentSettings.from_env()
     dstat = attach_mod.dir_stats(a.dir)
     state = {
-        "provider": ocr_mod.SETTINGS.provider,
-        "accurate": ocr_mod.SETTINGS.accurate,
-        "configured": ocr_mod.SETTINGS.configured,
-        "label": ocr_mod.SETTINGS.describe() if ocr_mod.SETTINGS.configured else "",
-        "api_key_set": bool(ocr_mod.SETTINGS.api_key),
-        "api_key_masked": ocr_mod.mask(ocr_mod.SETTINGS.api_key),
-        "secret_key_set": bool(ocr_mod.SETTINGS.secret_key),
-        "secret_key_masked": ocr_mod.mask(ocr_mod.SETTINGS.secret_key),
-        "endpoint": ocr_mod.SETTINGS.endpoint,
+        "provider": ocr_cfg.provider,
+        "accurate": ocr_cfg.accurate,
+        "configured": ocr_cfg.configured,
+        "label": ocr_cfg.describe() if ocr_cfg.configured else "",
+        "api_key_set": bool(ocr_cfg.api_key),
+        "api_key_masked": ocr_mod.mask(ocr_cfg.api_key),
+        "secret_key_set": bool(ocr_cfg.secret_key),
+        "secret_key_masked": ocr_mod.mask(ocr_cfg.secret_key),
+        "endpoint": ocr_cfg.endpoint,
         "env_file": str(ENV_FILE),
         "writable": writable,
         "shadowed": sorted(env_file_shadowed_keys() & set(OCR_ENV_KEYS)),
@@ -251,12 +242,13 @@ def ocr_state(writable: bool, extra: dict | None = None, *, settings=None) -> di
 def apply_auth_settings(*, auto_login: bool | None = None, ocr_captcha: bool | None = None,
                         captcha_rounds: int | None = None, service: str | None = None,
                         captcha_url: str | None = None, persist: bool = True,
-                        env_file=None) -> dict:
-    """把一份「登录行为」配置应用到当前进程并按需落盘 `.env`。
+                        env_file=None, settings=None) -> dict:
+    """把一份「登录行为」配置应用到指定 ``Settings`` 并按需落盘 `.env`。
 
     这几个开关总是全量写：复选框的状态就是用户的意思，不像 key 那样存在
     「留空＝不改动」的语义。字符串项留空表示清掉。
     """
+    cfg = settings or SETTINGS
     updates: dict[str, str] = {}
     if auto_login is not None:
         updates["AUTH_AUTO_LOGIN"] = "1" if auto_login else "0"
@@ -281,14 +273,8 @@ def apply_auth_settings(*, auto_login: bool | None = None, ocr_captcha: bool | N
         except OSError as e:
             warning = f"登录配置已在本次运行中生效，但写入 .env 失败：{e}"
 
-    settings = None
-    try:
-        from ..crawl import auth as auth_mod
-
-        settings = auth_mod.refresh_settings()
-    except Exception as e:  # noqa: BLE001
-        warning = warning or f"{type(e).__name__}: {e}"
-    return {"settings": settings, "applied": sorted(updates), "wrote": wrote,
+    cfg.auth.__dict__.update(AuthSettings.from_env().__dict__)
+    return {"settings": cfg.auth, "applied": sorted(updates), "wrote": wrote,
             "warning": warning}
 
 
@@ -300,15 +286,16 @@ def clear_auth_credentials() -> dict:
     return {"removed": existed, "state": auth_mod.credentials_state()}
 
 
-def auth_state(writable: bool, extra: dict | None = None) -> dict:
+def auth_state(writable: bool, extra: dict | None = None, *, settings=None) -> dict:
     """设置面板「🔐 账号与登录」分页的状态（密码从不回显）。"""
     from ..crawl import auth as auth_mod
 
+    cfg = settings or SETTINGS
     sess = auth_mod.AuthSession()
-    st = auth_mod.SETTINGS
+    st = cfg.auth
     state = {
         "credentials": auth_mod.credentials_state(),
-        "session": auth_mod.session_state(sess),
+        "session": auth_mod.session_state(sess, settings=st),
         "settings": {
             "auto_login": st.auto_login,
             "ocr_captcha": st.ocr_captcha,
@@ -317,7 +304,7 @@ def auth_state(writable: bool, extra: dict | None = None) -> dict:
             "service_custom": bool(st.service),
             "captcha_url": st.captcha_url,
         },
-        "ocr_configured": ocr_configured(),
+        "ocr_configured": ocr_configured(cfg),
         "cas_base": auth_mod.CAS_BASE,
         "default_service": auth_mod.DEFAULT_SERVICE,
         "env_file": str(ENV_FILE),
@@ -396,12 +383,13 @@ def login_payload(session, result) -> dict:
             "message": f"登录成功{extra}，会话已存到 .auth/，crawl 会带着它抓"}
 
 
-def do_login(user: str, password: str, service: str = "") -> dict:
+def do_login(user: str, password: str, service: str = "", *, settings=None) -> dict:
     """真登一次。OCR 认不出验证码时把图 + 待续 token 带回去让人填。"""
     from ..crawl import auth as auth_mod
 
+    cfg = settings or SETTINGS
     sess = auth_mod.AuthSession()
-    target = service or auth_mod.SETTINGS.service or auth_mod.DEFAULT_SERVICE
+    target = service or cfg.auth.service or auth_mod.DEFAULT_SERVICE
     form, captcha_text, cap_err = auth_mod.begin_login(sess, target)
     if not form.ok:
         return {"ok": False, "error": form.error or "打不开登录页",

@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from ..server.http import Request, Response, json_response
+from ..protocol.http import Request, Response, json_response
 from ..services import Services
 from ..settings import commands
 

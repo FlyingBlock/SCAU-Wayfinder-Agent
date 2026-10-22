@@ -52,47 +52,7 @@ class FetchResult:
         return bool(self.final_url) and self.final_url != self.url
 
 
-#: 本机地址：不强制改 https（本地假服务器/自建服务多为纯 http，改了必然连不上）
-_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
-
-
-def is_loopback(url: str) -> bool:
-    host = urllib.parse.urlsplit(url).netloc.split("@")[-1].split(":")[0].lower()
-    return host in _LOOPBACK_HOSTS
-
-
-def normalize_url(url: str, prefer_https: bool = True) -> str:
-    """统一 https、去 fragment、去跟踪参数、小写域名；保留 query（就业网按参数寻址）。
-
-    例外：`localhost` / `127.0.0.1` 之类本机地址保持原协议——把 http 改成 https
-    只会让本地服务（测试用的假站点、自建 PDF 服务）直接连不上。
-    """
-    if not url:
-        return ""
-    url = url.strip()
-    if url.startswith("//"):
-        url = "https:" + url
-    p = urllib.parse.urlsplit(url)
-    scheme = p.scheme.lower()
-    if prefer_https and scheme in ("http", "https") and not is_loopback(url):
-        scheme = "https"
-    elif not scheme:
-        scheme = "https"
-    netloc = p.netloc.lower()
-    if not netloc:
-        return ""
-    # 丢弃常见跟踪参数，保留业务参数（type_id / menu_id / id …）
-    if p.query:
-        keep = []
-        for k, v in urllib.parse.parse_qsl(p.query, keep_blank_values=True):
-            if k.lower() in ("utm_source", "utm_medium", "utm_campaign", "utm_term", "spm", "_t"):
-                continue
-            keep.append((k, v))
-        query = urllib.parse.urlencode(keep)
-    else:
-        query = ""
-    path = p.path or "/"
-    return urllib.parse.urlunsplit((scheme, netloc, path, query, ""))
+from ..core.urls import is_loopback, normalize_url
 
 
 def is_scau(url: str) -> bool:

@@ -43,10 +43,12 @@ class Client:
     def __init__(self, port: int) -> None:
         self.port = port
 
-    def _request(self, method: str, path: str, body: dict | None = None):
+    def _request(self, method: str, path: str, body: dict | None = None,
+                 extra_headers: dict[str, str] | None = None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=60)
         payload = json.dumps(body).encode() if body is not None else None
         headers = {"Content-Type": "application/json"} if payload else {}
+        headers.update(extra_headers or {})
         conn.request(method, path, body=payload, headers=headers)
         resp = conn.getresponse()
         raw = resp.read()
@@ -57,8 +59,8 @@ class Client:
     def get(self, path: str):
         return self._request("GET", path)
 
-    def post(self, path: str, body: dict):
-        return self._request("POST", path, body)
+    def post(self, path: str, body: dict, headers: dict[str, str] | None = None):
+        return self._request("POST", path, body, headers)
 
 
 def main() -> int:
@@ -106,8 +108,17 @@ def main() -> int:
         cat = json.loads(raw)
         check(st == 200 and len(cat.get("majors", [])) == 2
               and len(cat.get("activities", [])) > 100, "GET /api/calc/catalog")
+        st, _, raw = c.get("/api/calc/catalog?activities=0")
+        slim = json.loads(raw)
+        check(st == 200 and "activities" not in slim and "majors" in slim,
+              "GET /api/calc/catalog?activities=0（首屏瘦身）")
         st, _, raw = c.get("/api/calc/target?gpa=3.2&major=biotech")
         check(st == 200 and isinstance(json.loads(raw), dict), "GET /api/calc/target")
+        st, _, raw = c.get("/api/calc/activities?kind=competition&scored=1")
+        d = json.loads(raw)
+        check(st == 200 and d.get("filtered", 0) > 0
+              and d.get("filtered", 0) <= d.get("total", 0),
+              "GET /api/calc/activities（后端筛选）")
         st, _, raw = c.get("/api/search?q=%E6%8C%91%E6%88%98%E6%9D%AF")
         d = json.loads(raw)
         check(st == 200 and d.get("total") == 0 and d.get("hits") == [],
@@ -135,6 +146,10 @@ def main() -> int:
         check(st == 403, "静态资源路径穿越 403")
         st, _, _ = c.post("/api/settings/llm", {"base_url": "ftp://x"})
         check(st == 400, "非法 base URL 400")
+        st, _, _ = c.post("/api/settings/llm",
+                          {"base_url": "https://evil.example"},
+                          headers={"Origin": "https://evil.example"})
+        check(st == 403, "跨站设置写请求 403")
     finally:
         SETTINGS.crawl = original
         if httpd is not None:

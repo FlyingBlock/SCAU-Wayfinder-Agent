@@ -2,7 +2,7 @@
 import { $, $$, esc } from '../../shared/dom.js';
 import { getJSON, postJSON } from '../../shared/api.js';
 import { toast } from '../../shared/toast.js';
-import { emit } from '../../shared/events.js';
+import { emit, on } from '../../shared/events.js';
 
 function setMsg(html, kind){
   const el=$('#set-msg');
@@ -409,4 +409,5 @@ export function bindSettings() {
   const bd = $('#set-bd');
   if (bd) bd.onclick = e => { if (e.target === bd) closeSettings(); };
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSettings(); });
+  on('settings:open', openSettings);
 }
